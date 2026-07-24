@@ -1,6 +1,6 @@
 # Tenon
 
-Tenon is a customizable open-source SoC framework for hierarchical multi-project integration. Its first implemented layer is Tier0 Foundation: a reusable IHP SG13G2 (IHP130) padframe contract with reproducible LibreLane reference hardening targets.
+Tenon is a customizable open-source SoC framework for hierarchical multi-project integration. Tier0 Foundation defines one QFN package contract and PDK-specific padframe adapters for IHP SG13G2 (IHP130), Sky130A and GF180MCU.
 
 ## Three-tier model
 
@@ -10,7 +10,7 @@ Tenon is a customizable open-source SoC framework for hierarchical multi-project
 | Tier1 Management | IO mapping, clock multiplication, debug probes and reserved application area | Re-hardens a complete chip around Tier1 logic. |
 | Tier2 Application | User design | May originate as RTL or a hardened macro. |
 
-Tier0 hardening outputs are standalone physical reference views. A pad-ring GDS cannot be placed as an ordinary macro around a separate Tier1 block; Tier1 must reuse `rtl/tenon_tier0_padframe.sv` in its full-chip run.
+Tier0 hardening outputs are standalone physical reference views. A pad-ring GDS cannot be placed as an ordinary macro around a separate Tier1 block; Tier1 must reuse the selected Tier0 wrapper and produce the final full-chip GDS.
 
 ## Tier0 profiles
 
@@ -21,33 +21,59 @@ Tier0 hardening outputs are standalone physical reference views. A pad-ring GDS 
 | QFN88 | 88 | 6 each | 8 | 56 |
 | QFN128 | 128 | 8 each | 8 | 88 |
 
-The fixed management pins are `mgmt_clk`, `mgmt_rst_n`, JTAG `TCK/TMS/TDI/TDO`, and UART `RX/TX`. Inputs use `sg13g2_IOPadIn`; JTAG TDO and UART TX use `sg13g2_IOPadOut30mA`; GPIOs use `sg13g2_IOPadInOut30mA`.
+The fixed management pins are `mgmt_clk`, `mgmt_rst_n`, JTAG `TCK/TMS/TDI/TDO`, and UART `RX/TX`. The common core-facing interface exposes `mgmt_clk_i`, `mgmt_rst_ni`, `jtag_tck_i`, `jtag_tms_i`, `jtag_tdi_i`, `uart_rx_i`, `jtag_tdo_o`, `uart_tx_o`, `gpio_i[]`, `gpio_o[]`, and `gpio_oe[]`.
 
 QFN N means N wire-bondable package leads. An optional exposed pad is a package and assembly decision, normally tied to VSS, and is not a Tier0 pad. The exact pin maps are generated under `docs/pinout/`; numbering is top-view from the south-west corner and advances counter-clockwise.
 
-## Core-facing interface
+## PDK support
 
-`tenon_tier0_padframe` exposes management inputs `mgmt_clk_i`, `mgmt_rst_ni`, `jtag_tck_i`, `jtag_tms_i`, `jtag_tdi_i`, `uart_rx_i`; management outputs `jtag_tdo_o`, `uart_tx_o`; and `gpio_i[]`, `gpio_o[]`, `gpio_oe[]`.
+`specs/tier0_profiles.json` is the package source of truth. `specs/tier0_pdks.json` records PDK-specific cell and rail contracts.
 
-The physical integration contract maintains two separate supplies: `VDD/VSS` for core logic and `IOVDD/IOVSS` for IO cells. They must not be shorted. Tier1 owns reset defaults and IO mux policy; the Tier0 reference stub keeps all GPIOs high impedance.
+| PDK | Adapter | IO cells | Core rails | IO rails | Status |
+|---|---|---|---|---|---|
+| IHP SG13G2 | `tenon_tier0_padframe` | `sg13g2_io` | `VDD/VSS` | `IOVDD/IOVSS` | QFN32/64/88/128 LibreLane reference flows |
+| Sky130A | `tenon_tier0_padframe_sky130` | `sky130_fd_io` | `VCCD/VSSD` | `VDDIO/VSSIO` | RTL, fixed QFN tops, installed-PDK lint, CI simulation |
+| GF180MCU D | `tenon_tier0_padframe_gf180` | `gf180mcu_ocd_io` | `DVDD/DVSS` | `VDD/VSS` | RTL, fixed QFN tops, installed-PDK lint, CI simulation |
 
-## Use an existing LibreLane and PDK
+Sky130 uses the Tiny Tapeout workflow baseline `TinyTapeout/tt-gds-action@ttsky26c` with `sky130A`. GF180 uses the wafer.space template's `gf180mcuD` / `gf180mcu_ocd_io` choice and reference PDK tag `1.8.0`.
 
-This repository deliberately contains no LibreLane installation, PDK download, Nix shell or container startup configuration. Provide an already available IHP Open PDK root when running commands:
+The four logical rails remain separate for every PDK. For Sky130, `VDDIO_Q`, `VCCHIB`, `VDDA`, `VSWITCH`, `VSSA` and `VSSIO_Q` are connected only as required by the `sky130_fd_io` cell topology; they are not an external rail merge. For GF180, the apparently reversed names are intentional: the OCD IO library calls its digital core supply `DVDD/DVSS` and its IO supply `VDD/VSS`.
+
+The IHP flows are the only committed physical hardening flows. Sky130 and GF180 require an installed-PDK audit of IO LEF/GDS, pad pitch, corner/filler cells, supply geometry and PDN before adding physical LibreLane configurations. This repository deliberately does not invent those values or include PDK download, Nix, Docker or LibreLane startup configuration.
+
+## Commands
+
+PDK-independent checks and simulations use CI-only PadCell models:
 
 ```bash
 make check-generated
+make format-check
+make sim
+make sim-compile
+```
+
+Use existing PDK installations for real-library linting. The IO model variables can be overridden when a PDK packages its Verilog views differently.
+
+```bash
 make lint PDK_ROOT=/path/to/IHP-Open-PDK
 make test PDK_ROOT=/path/to/IHP-Open-PDK
+
+make lint-sky130 PDK_ROOT=/path/to/open-pdks
+make lint-gf180 PDK_ROOT=/path/to/open-pdks
+```
+
+IHP reference hardening remains available for all four package profiles:
+
+```bash
 make harden-qfn32 PDK_ROOT=/path/to/IHP-Open-PDK
 make harden-all PDK_ROOT=/path/to/IHP-Open-PDK
 ```
 
-Hardening outputs are saved beneath `build/qfn*/final/`; LibreLane run logs are under `flow/runs/`. These are intentionally ignored because every view is reproducible from the committed specification and sources.
+Set `SKIP_DRC=1` only for a non-signoff iteration. It skips Magic and KLayout DRC; default hardening retains all checks except the reference template's intentional bondpad/pad `Checker.IllegalOverlap` suppression. Outputs are saved below `build/qfn*/final/` and run logs below `flow/runs/`.
 
 ## Verification
 
-`make test` uses Icarus Verilog and the IHP IO behavioral library to exercise all four parameter sets: management input/output propagation, GPIO output enable, GPIO high impedance and external GPIO sampling. `make harden-*` runs the LibreLane Chip flow with the IHP IO library and the reference bondpad macro. All standard signoff checks remain enabled except the template's intentional illegal-overlap checker suppression for bondpad/pad reporting.
+`make sim` runs the same management and GPIO behavior test against IHP, Sky130 and GF180 PadCell stand-ins for QFN32/64/88/128. `make test` additionally runs the IHP behavioral IO library. `make lint-sky130` and `make lint-gf180` compile each fixed QFN top against the installed vendor/open-PDK library.
 
 ## Physical asset attribution
 

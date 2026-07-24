@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "package_profiles": "tier0_profiles.json",
+  "pdks": [
+    {
+      "id": "ihp-sg13g2",
+      "padframe_module": "tenon_tier0_padframe",
+      "reference_module": "tenon_tier0_reference",
+      "physical_flow": "flow/qfn*.yaml",
+      "io_library": "sg13g2_io",
+      "rail_mapping": {
+        "VDD": "VDD",
+        "VSS": "VSS",
+        "IOVDD": "IOVDD",
+        "IOVSS": "IOVSS"
+      }
+    },
+    {
+      "id": "sky130A",
+      "padframe_module": "tenon_tier0_padframe_sky130",
+      "reference_module": "tenon_tier0_reference_sky130",
+      "package_top_prefix": "tenon_tier0_sky130_",
+      "io_library": "sky130_fd_io",
+      "tiny_tapeout_baseline": "TinyTapeout/tt-gds-action@ttsky26c",
+      "rail_mapping": {
+        "VDD": "VCCD",
+        "VSS": "VSSD",
+        "IOVDD": "VDDIO",
+        "IOVSS": "VSSIO"
+      },
+      "physical_flow_status": "requires a PDK-specific pad placement and PDN audit"
+    },
+    {
+      "id": "gf180mcuD",
+      "padframe_module": "tenon_tier0_padframe_gf180",
+      "reference_module": "tenon_tier0_reference_gf180",
+      "package_top_prefix": "tenon_tier0_gf180_",
+      "io_library": "gf180mcu_ocd_io",
+      "reference_pdk_tag": "1.8.0",
+      "rail_mapping": {
+        "VDD": "DVDD",
+        "VSS": "DVSS",
+        "IOVDD": "VDD",
+        "IOVSS": "VSS"
+      },
+      "physical_flow_status": "requires a PDK-specific pad placement and PDN audit"
+    }
+  ]
+}
