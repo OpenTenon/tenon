@@ -13,12 +13,13 @@ module tenon_sky130_gpio (
     inout  wire vddio,
     inout  wire vssio
 );
-  wire vddio_q = vddio;
-  wire vcchib = vddio;
-  wire vdda = vddio;
-  wire vswitch = vddio;
-  wire vssa = vssd;
-  wire vssio_q = vssio;
+
+  // The IO cell supplies its own static one and zero sources, matching the
+  // Tiny Tapeout OpenFrame loopback model without routing controls through core.
+  (* keep = "true" *)wire       control_low;
+  (* keep = "true" *)wire       control_high;
+  (* keep = "true" *)wire [2:0] drive_mode;
+  assign drive_mode = {control_high, control_high, control_low};
 
   (* keep = "true" *) sky130_fd_io__top_gpiov2 u_pad (
       .PAD             (pad),
@@ -26,23 +27,23 @@ module tenon_sky130_gpio (
       .OE_N            (~core_oe),
       .IN              (pad_to_core),
       .IN_H            (),
-      .DM              (3'b110),
-      .HLD_H_N         (1'b1),
-      .INP_DIS         (1'b0),
-      .IB_MODE_SEL     (1'b0),
-      .ENABLE_H        (1'b1),
-      .ENABLE_VDDA_H   (1'b1),
-      .ENABLE_INP_H    (1'b1),
-      .TIE_HI_ESD      (),
-      .TIE_LO_ESD      (),
-      .SLOW            (1'b0),
-      .VTRIP_SEL       (1'b0),
-      .HLD_OVR         (1'b0),
-      .ANALOG_EN       (1'b0),
-      .ANALOG_SEL      (1'b0),
-      .ENABLE_VDDIO    (1'b1),
-      .ENABLE_VSWITCH_H(1'b1),
-      .ANALOG_POL      (1'b0),
+      .DM              (drive_mode),
+      .HLD_H_N         (control_high),
+      .INP_DIS         (control_low),
+      .IB_MODE_SEL     (control_low),
+      .ENABLE_H        (control_high),
+      .ENABLE_VDDA_H   (control_high),
+      .ENABLE_INP_H    (control_high),
+      .TIE_HI_ESD      (control_high),
+      .TIE_LO_ESD      (control_low),
+      .SLOW            (control_low),
+      .VTRIP_SEL       (control_low),
+      .HLD_OVR         (control_low),
+      .ANALOG_EN       (control_low),
+      .ANALOG_SEL      (control_low),
+      .ENABLE_VDDIO    (control_high),
+      .ENABLE_VSWITCH_H(control_high),
+      .ANALOG_POL      (control_low),
       .AMUXBUS_A       (),
       .AMUXBUS_B       (),
       .PAD_A_NOESD_H   (),
@@ -52,12 +53,12 @@ module tenon_sky130_gpio (
       .VSSD            (vssd),
       .VDDIO           (vddio),
       .VSSIO           (vssio),
-      .VDDIO_Q         (vddio_q),
-      .VCCHIB          (vcchib),
-      .VDDA            (vdda),
-      .VSSA            (vssa),
-      .VSWITCH         (vswitch),
-      .VSSIO_Q         (vssio_q)
+      .VDDIO_Q         (vddio),
+      .VCCHIB          (vddio),
+      .VDDA            (vddio),
+      .VSSA            (vssd),
+      .VSWITCH         (vddio),
+      .VSSIO_Q         (vssio)
   );
 endmodule
 
@@ -65,6 +66,11 @@ module tenon_tier0_padframe_sky130 #(
     parameter integer GPIO_COUNT    = 16,
     parameter integer PADS_PER_RAIL = 2
 ) (
+    // Repeated package supply pads share one external net per rail.
+    inout  wire                  vccd,
+    inout  wire                  vssd,
+    inout  wire                  vddio,
+    inout  wire                  vssio,
     inout  wire                  mgmt_clk_pad,
     inout  wire                  mgmt_rst_n_pad,
     inout  wire                  jtag_tck_pad,
@@ -86,22 +92,12 @@ module tenon_tier0_padframe_sky130 #(
     input  wire [GPIO_COUNT-1:0] gpio_o,
     input  wire [GPIO_COUNT-1:0] gpio_oe
 );
-  wire vccd;
-  wire vssd;
-  wire vddio;
-  wire vssio;
-  wire vddio_q = vddio;
-  wire vcchib = vddio;
-  wire vdda = vddio;
-  wire vswitch = vddio;
-  wire vssa = vssd;
-  wire vssio_q = vssio;
   genvar index;
 
   generate
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_iovdd_pads
       (* keep = "true" *) sky130_fd_io__top_power_hvc_wpad u_pad (
-          .P_PAD      (),
+          .P_PAD      (vddio),
           .P_CORE     (vddio),
           .AMUXBUS_A  (),
           .AMUXBUS_B  (),
@@ -112,17 +108,17 @@ module tenon_tier0_padframe_sky130 #(
           .VSSD       (vssd),
           .VDDIO      (vddio),
           .VSSIO      (vssio),
-          .VDDIO_Q    (vddio_q),
-          .VCCHIB     (vcchib),
-          .VDDA       (vdda),
-          .VSSA       (vssa),
-          .VSWITCH    (vswitch),
-          .VSSIO_Q    (vssio_q)
+          .VDDIO_Q    (vddio),
+          .VCCHIB     (vddio),
+          .VDDA       (vddio),
+          .VSSA       (vssd),
+          .VSWITCH    (vddio),
+          .VSSIO_Q    (vssio)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_iovss_pads
       (* keep = "true" *) sky130_fd_io__top_ground_hvc_wpad u_pad (
-          .G_PAD      (),
+          .G_PAD      (vssio),
           .G_CORE     (vssio),
           .AMUXBUS_A  (),
           .AMUXBUS_B  (),
@@ -133,17 +129,17 @@ module tenon_tier0_padframe_sky130 #(
           .VSSD       (vssd),
           .VDDIO      (vddio),
           .VSSIO      (vssio),
-          .VDDIO_Q    (vddio_q),
-          .VCCHIB     (vcchib),
-          .VDDA       (vdda),
-          .VSSA       (vssa),
-          .VSWITCH    (vswitch),
-          .VSSIO_Q    (vssio_q)
+          .VDDIO_Q    (vddio),
+          .VCCHIB     (vddio),
+          .VDDA       (vddio),
+          .VSSA       (vssd),
+          .VSWITCH    (vddio),
+          .VSSIO_Q    (vssio)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vdd_pads
       (* keep = "true" *) sky130_fd_io__top_power_hvc_wpad u_pad (
-          .P_PAD      (),
+          .P_PAD      (vccd),
           .P_CORE     (vccd),
           .AMUXBUS_A  (),
           .AMUXBUS_B  (),
@@ -154,17 +150,17 @@ module tenon_tier0_padframe_sky130 #(
           .VSSD       (vssd),
           .VDDIO      (vddio),
           .VSSIO      (vssio),
-          .VDDIO_Q    (vddio_q),
-          .VCCHIB     (vcchib),
-          .VDDA       (vdda),
-          .VSSA       (vssa),
-          .VSWITCH    (vswitch),
-          .VSSIO_Q    (vssio_q)
+          .VDDIO_Q    (vddio),
+          .VCCHIB     (vddio),
+          .VDDA       (vddio),
+          .VSSA       (vssd),
+          .VSWITCH    (vddio),
+          .VSSIO_Q    (vssio)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vss_pads
       (* keep = "true" *) sky130_fd_io__top_ground_hvc_wpad u_pad (
-          .G_PAD      (),
+          .G_PAD      (vssd),
           .G_CORE     (vssd),
           .AMUXBUS_A  (),
           .AMUXBUS_B  (),
@@ -175,12 +171,12 @@ module tenon_tier0_padframe_sky130 #(
           .VSSD       (vssd),
           .VDDIO      (vddio),
           .VSSIO      (vssio),
-          .VDDIO_Q    (vddio_q),
-          .VCCHIB     (vcchib),
-          .VDDA       (vdda),
-          .VSSA       (vssa),
-          .VSWITCH    (vswitch),
-          .VSSIO_Q    (vssio_q)
+          .VDDIO_Q    (vddio),
+          .VCCHIB     (vddio),
+          .VDDA       (vddio),
+          .VSSA       (vssd),
+          .VSWITCH    (vddio),
+          .VSSIO_Q    (vssio)
       );
     end
   endgenerate

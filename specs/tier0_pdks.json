@@ -8,6 +8,7 @@
       "reference_module": "tenon_tier0_reference",
       "physical_flow": "flow/ihp130/qfn*.yaml",
       "io_library": "sg13g2_io",
+      "reference_pdk_tag": "3b5a704ba6738aa686b08706187830e6284d2a10",
       "rail_mapping": {
         "VDD": "VDD",
         "VSS": "VSS",
@@ -28,6 +29,10 @@
         "IOVDD": "VDDIO",
         "IOVSS": "VSSIO"
       },
+      "physical_flow": "flow/sky130/qfn*.yaml",
+      "reference_pdk_tag": "8afc8346a57fe1ab7934ba5a6056ea8b43078e71",
+      "standard_cell_library": "sky130_fd_sc_hd",
+      "pad_library": "sky130_fd_io",
       "physical_flow_status": "requires a PDK-specific pad placement and PDN audit"
     },
     {

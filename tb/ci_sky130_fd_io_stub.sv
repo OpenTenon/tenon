@@ -18,8 +18,8 @@ module sky130_fd_io__top_gpiov2 (
     input  wire       ENABLE_VDDA_H,
     input  wire       ENABLE_INP_H,
     input  wire       OE_N,
-    inout  wire       TIE_HI_ESD,
-    inout  wire       TIE_LO_ESD,
+    output wire       TIE_HI_ESD,
+    output wire       TIE_LO_ESD,
     input  wire       SLOW,
     input  wire       VTRIP_SEL,
     input  wire       HLD_OVR,
@@ -42,8 +42,10 @@ module sky130_fd_io__top_gpiov2 (
     inout  wire       VSSD,
     inout  wire       VSSIO_Q
 );
-  assign PAD = (OE_N == 1'b0 && DM != 3'b000 && DM != 3'b001) ? OUT : 1'bz;
-  assign IN  = PAD;
+  assign PAD        = (OE_N == 1'b0 && DM != 3'b000 && DM != 3'b001) ? OUT : 1'bz;
+  assign IN         = PAD;
+  assign TIE_HI_ESD = 1'b1;
+  assign TIE_LO_ESD = 1'b0;
 endmodule
 
 module sky130_fd_io__top_power_hvc_wpad (

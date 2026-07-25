@@ -6,6 +6,10 @@
 // verilog_format: off
 `define TENON_SKY130_VARIANT(TOP, WIDTH, RAIL_COUNT) \
 module TOP ( \
+    inout wire vccd, \
+    inout wire vssd, \
+    inout wire vddio, \
+    inout wire vssio, \
     inout wire mgmt_clk_pad, \
     inout wire mgmt_rst_n_pad, \
     inout wire jtag_tck_pad, \

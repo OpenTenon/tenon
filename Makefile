@@ -5,40 +5,49 @@ MBAKE          ?= mbake
 VERIBLE_FORMAT ?= verible-verilog-format
 LIBRELANE      ?= librelane
 PDK            ?= ihp-sg13g2
-PDK_ROOT       ?=
+IHP_CIEL_ROOT  ?= $(HOME)/.ciel/ciel/ihp-sg13g2/versions/3b5a704ba6738aa686b08706187830e6284d2a10
+PDK_ROOT       ?= $(IHP_CIEL_ROOT)
 SKIP_DRC       ?= 0
 
 IHP_RTL    := rtl/tenon_tier0_padframe.sv rtl/tenon_tier0_reference.sv rtl/tenon_tier0_variants.sv
 SKY130_RTL := rtl/tenon_tier0_padframe_sky130.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 GF180_RTL  := rtl/tenon_tier0_padframe_gf180.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 
-IHP_IO_MODEL    ?= $(PDK_ROOT)/$(PDK)/libs.ref/sg13g2_io/verilog/sg13g2_io.v
-SKY130_PDK      ?= sky130A
-SKY130_IO_MODEL ?= $(PDK_ROOT)/$(SKY130_PDK)/libs.ref/sky130_fd_io/verilog/sky130_fd_io.v
-GF180_PDK       ?= gf180mcuD
-GF180_PDK_ROOT  ?= $(PDK_ROOT)
-GF180_SCL       ?= gf180mcu_fd_sc_mcu7t5v0
-GF180_PAD       ?= gf180mcu_ocd_io
-GF180_IO_MODEL  ?= $(GF180_PDK_ROOT)/$(GF180_PDK)/libs.ref/$(GF180_PAD)/verilog/$(GF180_PAD).v
+IHP_IO_MODEL         ?= $(PDK_ROOT)/$(PDK)/libs.ref/sg13g2_io/verilog/sg13g2_io.v
+SKY130_PDK           ?= sky130A
+SKY130_CIEL_ROOT     ?= $(HOME)/.ciel/ciel/sky130/versions/8afc8346a57fe1ab7934ba5a6056ea8b43078e71
+SKY130_PDK_ROOT      ?= $(SKY130_CIEL_ROOT)
+SKY130_SCL           ?= sky130_fd_sc_hd
+SKY130_DRT_OPT_ITERS ?= 64
+SKY130_IO_MODEL      ?= $(SKY130_PDK_ROOT)/$(SKY130_PDK)/libs.ref/sky130_fd_io/verilog/sky130_fd_io.v
+GF180_PDK            ?= gf180mcuD
+GF180_CIEL_ROOT      ?= $(HOME)/.ciel/ciel/gf180mcu/versions/f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7
+GF180_PDK_ROOT       ?= $(GF180_CIEL_ROOT)
+GF180_SCL            ?= gf180mcu_fd_sc_mcu7t5v0
+GF180_PAD            ?= gf180mcu_ocd_io
+GF180_IO_MODEL       ?= $(GF180_PDK_ROOT)/$(GF180_PDK)/libs.ref/$(GF180_PAD)/verilog/$(GF180_PAD).v
 
 CI_IHP_IO_MODEL    := tb/ci_sg13g2_io_stub.sv
 CI_SKY130_IO_MODEL := tb/ci_sky130_fd_io_stub.sv
 CI_GF180_IO_MODEL  := tb/ci_gf180mcu_ocd_io_stub.sv
 BUILD_DIR          := build
 
-IHP_FLOW_DIR   := flow/ihp130
-GF180_FLOW_DIR := flow/gf180
+IHP_FLOW_DIR    := flow/ihp130
+GF180_FLOW_DIR  := flow/gf180
+SKY130_FLOW_DIR := flow/sky130
 .DEFAULT_GOAL := help
 
 ifneq ($(filter 1 true TRUE yes YES,$(SKIP_DRC)),)
 IHP_DRC_OVERRIDES := --override-config RUN_MAGIC_DRC=false --override-config RUN_KLAYOUT_DRC=false
 GF180_DRC_SKIPS   := --skip Magic.DRC --skip KLayout.DRC
+SKY130_DRC_SKIPS  := --skip Magic.DRC --skip KLayout.DRC
 endif
 
 .PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-ihp sim-sky130 sim-gf180 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 lint lint-ihp lint-sky130 lint-gf180 lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128
+.PHONY: harden-sky130-all harden-sky130-qfn32 harden-sky130-qfn64 harden-sky130-qfn88 harden-sky130-qfn128
 
 help:
-	@echo "Usage: make <target> PDK_ROOT=/path/to/installed-pdk"
+	@echo "Usage: make <target> [PDK root override]"
 	@echo ""
 	@echo "  generate              Regenerate pin manifests and LibreLane configs"
 	@echo "  check-generated       Verify generated files are current"
@@ -47,21 +56,27 @@ help:
 	@echo "  format-check          Verify tracked Makefile and SystemVerilog formatting"
 	@echo "  sim                   Run functional simulations for IHP, Sky130, and GF180"
 	@echo "  sim-compile           Compile all three PDK adapter test configurations"
-	@echo "  lint                  Compile IHP fixed package tops with an installed IHP IO library"
-	@echo "  lint-sky130           Compile Sky130 fixed package tops with SKY130_IO_MODEL"
-	@echo "  lint-gf180            Compile GF180 fixed package tops with GF180_IO_MODEL"
+	@echo "  lint                  Compile IHP fixed package tops with the Ciel IO library"
+	@echo "  lint-sky130           Compile Sky130 fixed package tops with the Ciel IO library"
+	@echo "  lint-gf180            Compile GF180 fixed package tops with the Ciel IO library"
 	@echo "  test                  Run IHP IO behavioral-library tests"
 	@echo "  harden-qfn32          Run the IHP LibreLane flow for one package profile"
 	@echo "  harden-qfn64"
 	@echo "  harden-qfn88"
 	@echo "  harden-qfn128"
 	@echo "  harden-all            Run all IHP hardening targets sequentially"
+	@echo "  harden-sky130-qfn32  Run Sky130 LibreLane for one package profile"
+	@echo "  harden-sky130-qfn64"
+	@echo "  harden-sky130-qfn88"
+	@echo "  harden-sky130-qfn128"
+	@echo "  harden-sky130-all    Run all Sky130 hardening targets sequentially"
 	@echo "  harden-gf180-qfn32    Run GF180 OCD LibreLane for one package profile"
 	@echo "  harden-gf180-qfn64"
 	@echo "  harden-gf180-qfn88"
 	@echo "  harden-gf180-qfn128"
 	@echo "  harden-gf180-all      Run all GF180 hardening targets sequentially"
 	@echo "  SKIP_DRC=1            Skip Magic and KLayout DRC only (off by default)"
+	@echo "  SKY130_DRT_OPT_ITERS=64  Sky130 detailed-routing iterations (set 0 for a fast reference run)"
 
 generate:
 	$(PYTHON) tools/generate_tier0.py
@@ -123,8 +138,8 @@ check-pdk-ihp:
 	@test -f "$(IHP_IO_MODEL)" || (echo "Missing $(IHP_IO_MODEL)" && exit 2)
 
 check-pdk-sky130:
-	@test -n "$(PDK_ROOT)" || (echo "PDK_ROOT must point to an installed Sky130 PDK root" && exit 2)
-	@test -d "$(PDK_ROOT)/$(SKY130_PDK)" || (echo "Missing $(PDK_ROOT)/$(SKY130_PDK)" && exit 2)
+	@test -n "$(SKY130_PDK_ROOT)" || (echo "SKY130_PDK_ROOT must point to an installed Sky130 PDK root" && exit 2)
+	@test -d "$(SKY130_PDK_ROOT)/$(SKY130_PDK)" || (echo "Missing $(SKY130_PDK_ROOT)/$(SKY130_PDK)" && exit 2)
 	@test -f "$(SKY130_IO_MODEL)" || (echo "Missing $(SKY130_IO_MODEL); set SKY130_IO_MODEL if your PDK packages the IO model elsewhere" && exit 2)
 
 check-pdk-gf180:
@@ -149,10 +164,10 @@ lint-qfn128:
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_qfn128 $(IHP_IO_MODEL) $(IHP_RTL)
 
 lint-sky130: check-pdk-sky130
-	$(IVERILOG) -g2012 -tnull -s tenon_tier0_sky130_qfn32 $(SKY130_IO_MODEL) $(SKY130_RTL)
-	$(IVERILOG) -g2012 -tnull -s tenon_tier0_sky130_qfn64 $(SKY130_IO_MODEL) $(SKY130_RTL)
-	$(IVERILOG) -g2012 -tnull -s tenon_tier0_sky130_qfn88 $(SKY130_IO_MODEL) $(SKY130_RTL)
-	$(IVERILOG) -g2012 -tnull -s tenon_tier0_sky130_qfn128 $(SKY130_IO_MODEL) $(SKY130_RTL)
+	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn32 $(SKY130_IO_MODEL) $(SKY130_RTL)
+	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn64 $(SKY130_IO_MODEL) $(SKY130_RTL)
+	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn88 $(SKY130_IO_MODEL) $(SKY130_RTL)
+	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn128 $(SKY130_IO_MODEL) $(SKY130_RTL)
 
 lint-gf180: check-pdk-gf180
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_gf180_qfn32 $(GF180_IO_MODEL) $(GF180_RTL)
@@ -182,6 +197,24 @@ harden-all:
 	$(MAKE) harden-qfn64 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-qfn88 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-qfn128 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+
+harden-sky130-qfn32: generate check-pdk-sky130
+	$(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn32 --overwrite $(SKY130_FLOW_DIR)/qfn32.yaml
+
+harden-sky130-qfn64: generate check-pdk-sky130
+	$(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn64 --overwrite $(SKY130_FLOW_DIR)/qfn64.yaml
+
+harden-sky130-qfn88: generate check-pdk-sky130
+	$(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn88 --overwrite $(SKY130_FLOW_DIR)/qfn88.yaml
+
+harden-sky130-qfn128: generate check-pdk-sky130
+	$(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn128 --overwrite $(SKY130_FLOW_DIR)/qfn128.yaml
+
+harden-sky130-all:
+	$(MAKE) harden-sky130-qfn32 SKY130_PDK_ROOT="$(SKY130_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)" SKY130_DRT_OPT_ITERS="$(SKY130_DRT_OPT_ITERS)"
+	$(MAKE) harden-sky130-qfn64 SKY130_PDK_ROOT="$(SKY130_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)" SKY130_DRT_OPT_ITERS="$(SKY130_DRT_OPT_ITERS)"
+	$(MAKE) harden-sky130-qfn88 SKY130_PDK_ROOT="$(SKY130_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)" SKY130_DRT_OPT_ITERS="$(SKY130_DRT_OPT_ITERS)"
+	$(MAKE) harden-sky130-qfn128 SKY130_PDK_ROOT="$(SKY130_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)" SKY130_DRT_OPT_ITERS="$(SKY130_DRT_OPT_ITERS)"
 
 harden-gf180-qfn32: generate check-pdk-gf180
 	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn32 --overwrite $(GF180_FLOW_DIR)/qfn32.yaml

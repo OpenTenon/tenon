@@ -32,10 +32,13 @@ QFN N means N wire-bondable package leads. An optional exposed pad is a package 
 | PDK | Adapter | IO cells | Core rails | IO rails | Physical flow |
 |---|---|---|---|---|---|
 | IHP SG13G2 | `tenon_tier0_padframe` | `sg13g2_io` | `VDD/VSS` | `IOVDD/IOVSS` | `flow/ihp130/qfn*.yaml` |
-| Sky130A | `tenon_tier0_padframe_sky130` | `sky130_fd_io` | `VCCD/VSSD` | `VDDIO/VSSIO` | RTL, lint and simulation |
 | GF180MCU D | `tenon_tier0_padframe_gf180` | `gf180mcu_ocd_io` | `VDD/VSS` | `DVDD/DVSS` | `flow/gf180/qfn*.yaml` |
+| Sky130A | `tenon_tier0_padframe_sky130` | `sky130_fd_io` | `VCCD/VSSD` | `VDDIO/VSSIO` | `flow/sky130/qfn*.yaml` |
 
-Sky130 uses the Tiny Tapeout workflow baseline `TinyTapeout/tt-gds-action@ttsky26c` with `sky130A`. GF180 uses `gf180mcuD`, `gf180mcu_fd_sc_mcu7t5v0` and `gf180mcu_ocd_io`; the audited Ciel PDK revision is `f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7`.
+
+All physical flows default to installed Ciel revisions: IHP SG13G2 `3b5a704ba6738aa686b08706187830e6284d2a10`, Sky130A `8afc8346a57fe1ab7934ba5a6056ea8b43078e71`, and GF180MCU `f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7`.
+
+Sky130 uses `sky130_fd_sc_hd` and explicit `sky130_fd_io` LEF/GDS/Liberty assets. Each `top_gpiov2` loops its PDK-provided `TIE_HI_ESD` and `TIE_LO_ESD` outputs back to its own static controls, following the Tiny Tapeout IO model without introducing cross-die static-control routes. Its pad ring is placed through committed PDK-specific Tcl rather than repository-managed PDK installation.
 
 GF180's core standard-cell library uses `VDD/VSS`; the OCD IO library calls its separate IO rails `DVDD/DVSS`. The GF180 pad ring therefore connects the core PDN only to `VDD/VSS` and maintains `DVDD/DVSS` as a separate abutted ring.
 
@@ -50,35 +53,43 @@ make sim
 make sim-compile
 ```
 
-Use existing PDK installations for real-library linting:
+Real-library linting uses the audited Ciel defaults:
 
 ```bash
-make lint PDK_ROOT=/path/to/IHP-Open-PDK
-make test PDK_ROOT=/path/to/IHP-Open-PDK
-
-make lint-sky130 PDK_ROOT=/path/to/open-pdks
-make lint-gf180 GF180_PDK_ROOT=/path/to/gf180mcu
+make lint
+make test
+make lint-sky130
+make lint-gf180
 ```
 
 IHP reference hardening remains available for all package profiles:
 
 ```bash
-make harden-all PDK_ROOT=/path/to/IHP-Open-PDK
+make harden-all
 ```
 
 GF180 hardening uses the OCD IO PDK assets:
 
 ```bash
+make harden-gf180-all
+```
+
+All hardening targets use their audited Ciel defaults. Existing PDK roots may be supplied explicitly when required:
+
+```bash
+make harden-sky130-all
+make harden-all PDK_ROOT=/path/to/IHP-Open-PDK
+make harden-sky130-all SKY130_PDK_ROOT=/path/to/sky130-pdk-root
 make harden-gf180-all GF180_PDK_ROOT=/path/to/gf180mcu
 ```
 
-Set `SKIP_DRC=1` only for a user-authorized non-signoff iteration. It skips Magic and KLayout DRC only; LVS, antenna, connectivity and the remaining checks continue to run. Default hardening retains all checks except the IHP template's intentional bondpad/pad `Checker.IllegalOverlap` suppression.
+Set `SKIP_DRC=1` only for a user-authorized non-signoff iteration. It skips Magic and KLayout DRC only; LVS, antenna, connectivity and the remaining checks continue to run. `SKY130_DRT_OPT_ITERS` defaults to `64`; use `SKY130_DRT_OPT_ITERS=0` only to produce a fast Sky130 reference run. Default hardening retains all checks except the IHP template's intentional bondpad/pad `Checker.IllegalOverlap` suppression.
 
+LibreLane retains complete native runs and final views under `flow/ihp130/runs/tenon-qfn*/final/`, `flow/sky130/runs/tenon-qfn*/final/`, and `flow/gf180/runs/tenon-qfn*/final/`. The PDK-specific design directories make identical run tags unambiguous; hardening does not create duplicate views under `build/`.
 
-LibreLane retains complete native runs and final views under `flow/ihp130/runs/tenon-qfn*/final/` and `flow/gf180/runs/tenon-qfn*/final/`. The PDK-specific design directories make the identical run tags unambiguous; hardening does not create duplicate views under `build/`.
 ## Verification
 
-`make sim` runs the same management and GPIO behavior test against IHP, Sky130 and GF180 PadCell stand-ins for QFN32/64/88/128. `make test` additionally runs the IHP behavioral IO library. `make lint-gf180` compiles each GF180 fixed QFN top against the installed `gf180mcu_ocd_io` library.
+`make sim` runs the same management and GPIO behavior test against IHP, Sky130 and GF180 PadCell stand-ins for QFN32/64/88/128. `make test` additionally runs the IHP behavioral IO library. `make lint-sky130` and `make lint-gf180` compile each fixed QFN top against their respective installed production IO libraries.
 
 ## Physical Asset Attribution
 

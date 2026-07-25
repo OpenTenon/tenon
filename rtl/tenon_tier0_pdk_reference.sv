@@ -7,6 +7,10 @@ module tenon_tier0_reference_sky130 #(
     parameter integer GPIO_COUNT    = 16,
     parameter integer PADS_PER_RAIL = 2
 ) (
+    inout wire                  vccd,
+    inout wire                  vssd,
+    inout wire                  vddio,
+    inout wire                  vssio,
     inout wire                  mgmt_clk_pad,
     inout wire                  mgmt_rst_n_pad,
     inout wire                  jtag_tck_pad,
@@ -38,6 +42,10 @@ module tenon_tier0_reference_sky130 #(
       .GPIO_COUNT   (GPIO_COUNT),
       .PADS_PER_RAIL(PADS_PER_RAIL)
   ) u_padframe (
+      .vccd          (vccd),
+      .vssd          (vssd),
+      .vddio         (vddio),
+      .vssio         (vssio),
       .mgmt_clk_pad  (mgmt_clk_pad),
       .mgmt_rst_n_pad(mgmt_rst_n_pad),
       .jtag_tck_pad  (jtag_tck_pad),

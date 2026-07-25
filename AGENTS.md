@@ -15,19 +15,19 @@ Tier0's GDS/LEF is a standalone reference hardening result. It is not a normal m
 ## Tier0 Contract
 
 - Supported profiles are QFN32, QFN64, QFN88 and QFN128. Their lead count equals the Tier0 package-pin count and excludes an exposed pad.
-- Keep the logical `VDD/VSS` (core) rails electrically separate from `IOVDD/IOVSS` (IO) rails. Do not merge rails in RTL, PDN Tcl, package diagrams or macro integration.
+- Keep each PDK's core rail pair electrically separate from its IO rail pair: IHP `VDD/VSS` and `IOVDD/IOVSS`, Sky130 `VCCD/VSSD` and `VDDIO/VSSIO`, GF180 `VDD/VSS` and `DVDD/DVSS`. Do not merge rails in RTL, PDN Tcl, package diagrams or macro integration.
+- `specs/tier0_profiles.json` is the source of truth for the common package contract. `specs/tier0_pdks.json` maps those logical rails and profiles to each PDK. Never hand-edit generated files in `flow/ihp130/qfn*.yaml`, `flow/sky130/qfn*.yaml`, `flow/gf180/qfn*.yaml` or `docs/pinout/qfn*`; run `make generate` instead.
 - Management pins are stable: `mgmt_clk`, `mgmt_rst_n`, JTAG `TCK/TMS/TDI/TDO`, and UART `RX/TX`. GPIOs use the `gpio_i/gpio_o/gpio_oe` interface.
-- `specs/tier0_profiles.json` is the source of truth for the common package contract. `specs/tier0_pdks.json` maps those logical rails and profiles to each PDK. Never hand-edit generated files in `flow/ihp130/qfn*.yaml`, `flow/gf180/qfn*.yaml` or `docs/pinout/qfn*`; run `make generate` instead.
 - Pin numbering is top-view, starts at the south-west corner, and advances counter-clockwise. The generated CSV is the package/wire-bond handoff source.
 
 ## PDK Adapters
 
-- IHP SG13G2 uses `tenon_tier0_padframe`, `sg13g2_io`, and the committed LibreLane reference flows. IHP GPIOs use 30 mA bidirectional cells.
-- Sky130A uses `tenon_tier0_padframe_sky130` and `sky130_fd_io__top_gpiov2`. Map core rails to `VCCD/VSSD` and IO rails to `VDDIO/VSSIO`; the support rails `VDDIO_Q`, `VCCHIB`, `VDDA`, `VSWITCH`, `VSSA` and `VSSIO_Q` must remain within the documented IO-cell topology. The baseline is `TinyTapeout/tt-gds-action@ttsky26c`.
-- GF180MCU D uses `tenon_tier0_padframe_gf180` and `gf180mcu_ocd_io`. Map core rails to `VDD/VSS` and IO rails to `DVDD/DVSS`; do not short either pair. The committed reference uses Ciel PDK revision `f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7`.
+- IHP SG13G2 uses `tenon_tier0_padframe`, `sg13g2_io`, and the committed LibreLane reference flows. IHP GPIOs use 30 mA bidirectional cells. Its default physical PDK is Ciel revision `3b5a704ba6738aa686b08706187830e6284d2a10`.
+- Sky130A uses `tenon_tier0_padframe_sky130`, `sky130_fd_io__top_gpiov2`, and `flow/sky130/` for physical reference flows. Map core rails to `VCCD/VSSD` and IO rails to `VDDIO/VSSIO`; `VDDIO_Q`, `VCCHIB`, `VDDA`, `VSWITCH`, `VSSA` and `VSSIO_Q` remain on their documented supply domains. The default physical PDK is Ciel revision `8afc8346a57fe1ab7934ba5a6056ea8b43078e71`. Each GPIO loops its own `TIE_HI_ESD` and `TIE_LO_ESD` outputs to static controls, matching the Tiny Tapeout local loopback approach; the reference top exports the four package power nets. No PDK installation configuration belongs in this repository.
+- GF180MCU D uses `tenon_tier0_padframe_gf180` and `gf180mcu_ocd_io`. Map core rails to `VDD/VSS` and IO rails to `DVDD/DVSS`; do not short either pair. Its default physical PDK is Ciel revision `f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7`.
 - GF180 physical reference flows use the audited OCD LEF/GDS geometry, `gf180mcu_fd_sc_mcu7t5v0` and `gf180mcu_ocd_io`. Their PDN connects the core ring only to `VDD/VSS`; `DVDD/DVSS` remain an abutted IO pad-ring domain.
 - Preserve every production IO pad instance with synthesis attributes. CI-only behavioral PadCell models belong under `tb/`; never substitute them into synthesizable sources.
-- LibreLane run artifacts reside under `flow/ihp130/runs/` and `flow/gf180/runs/`; both PDKs use the `tenon-qfn*` run tags in their separate design directories. Do not export duplicate hardening views into `build/`.
+- LibreLane run artifacts reside under `flow/ihp130/runs/`, `flow/sky130/runs/`, and `flow/gf180/runs/`; all PDKs use the `tenon-qfn*` run tags in separate design directories. Do not export duplicate hardening views into `build/`.
 
 ## Tier1 and Tier2 Rules
 
@@ -39,5 +39,5 @@ Tier0's GDS/LEF is a standalone reference hardening result. It is not a normal m
 
 - Use SystemVerilog for RTL and keep `default_nettype none` around every module.
 - Run `make check-generated`, `make sim`, and `make format-check` before review. Run `make lint` and `make test` with the installed IHP PDK before IHP hardening; run `make lint-sky130` or `make lint-gf180` with the corresponding installed PDK before using those adapters.
-- Hardening requires an existing `PDK_ROOT`; do not add Nix, Docker, PDK download or LibreLane installation/startup configuration to this repository.
 - Do not suppress DRC, LVS, antenna or connectivity checks. The only allowed exceptions are the IHP template's intentional `Checker.IllegalOverlap` suppression and an explicitly user-authorized `SKIP_DRC=1` non-signoff run, which skips Magic and KLayout DRC only.
+- Hardening defaults to the three installed Ciel revisions and can be redirected with `PDK_ROOT` or a PDK-specific root variable; do not add Nix, Docker, PDK download or LibreLane installation/startup configuration to this repository.
