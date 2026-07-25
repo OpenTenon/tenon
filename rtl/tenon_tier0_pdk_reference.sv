@@ -65,6 +65,10 @@ module tenon_tier0_reference_gf180 #(
     parameter integer GPIO_COUNT    = 16,
     parameter integer PADS_PER_RAIL = 2
 ) (
+    inout wire                  iovdd,
+    inout wire                  iovss,
+    inout wire                  vdd,
+    inout wire                  vss,
     inout wire                  mgmt_clk_pad,
     inout wire                  mgmt_rst_n_pad,
     inout wire                  jtag_tck_pad,
@@ -96,6 +100,10 @@ module tenon_tier0_reference_gf180 #(
       .GPIO_COUNT   (GPIO_COUNT),
       .PADS_PER_RAIL(PADS_PER_RAIL)
   ) u_padframe (
+      .iovdd         (iovdd),
+      .iovss         (iovss),
+      .vdd           (vdd),
+      .vss           (vss),
       .mgmt_clk_pad  (mgmt_clk_pad),
       .mgmt_rst_n_pad(mgmt_rst_n_pad),
       .jtag_tck_pad  (jtag_tck_pad),

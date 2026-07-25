@@ -74,6 +74,11 @@ module tenon_tier0_padframe_gf180 #(
     parameter integer GPIO_COUNT    = 16,
     parameter integer PADS_PER_RAIL = 2
 ) (
+    // Physical supply ports. Repeated package pads on a rail share one net.
+    inout  wire                  iovdd,
+    inout  wire                  iovss,
+    inout  wire                  vdd,
+    inout  wire                  vss,
     inout  wire                  mgmt_clk_pad,
     inout  wire                  mgmt_rst_n_pad,
     inout  wire                  jtag_tck_pad,
@@ -95,42 +100,38 @@ module tenon_tier0_padframe_gf180 #(
     input  wire [GPIO_COUNT-1:0] gpio_o,
     input  wire [GPIO_COUNT-1:0] gpio_oe
 );
-  // GF180 OCD identifies the core supply as DVDD/DVSS and the IO supply as VDD/VSS.
-  wire dvdd;
-  wire dvss;
-  wire vdd;
-  wire vss;
+  // GF180 OCD uses VDD/VSS for its core domain and DVDD/DVSS for IO.
   genvar index;
 
   generate
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_iovdd_pads
-      (* keep = "true" *) gf180mcu_ocd_io__vdd u_pad (
-          .DVDD(dvdd),
-          .DVSS(dvss),
+      (* keep = "true" *) gf180mcu_ocd_io__dvdd u_pad (
+          .DVDD(iovdd),
+          .DVSS(iovss),
           .VDD (vdd),
           .VSS (vss)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_iovss_pads
-      (* keep = "true" *) gf180mcu_ocd_io__vss u_pad (
-          .DVDD(dvdd),
-          .DVSS(dvss),
+      (* keep = "true" *) gf180mcu_ocd_io__dvss u_pad (
+          .DVDD(iovdd),
+          .DVSS(iovss),
           .VDD (vdd),
           .VSS (vss)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vdd_pads
-      (* keep = "true" *) gf180mcu_ocd_io__dvdd u_pad (
-          .DVDD(dvdd),
-          .DVSS(dvss),
+      (* keep = "true" *) gf180mcu_ocd_io__vdd u_pad (
+          .DVDD(iovdd),
+          .DVSS(iovss),
           .VDD (vdd),
           .VSS (vss)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vss_pads
-      (* keep = "true" *) gf180mcu_ocd_io__dvss u_pad (
-          .DVDD(dvdd),
-          .DVSS(dvss),
+      (* keep = "true" *) gf180mcu_ocd_io__vss u_pad (
+          .DVDD(iovdd),
+          .DVSS(iovss),
           .VDD (vdd),
           .VSS (vss)
       );
@@ -140,40 +141,40 @@ module tenon_tier0_padframe_gf180 #(
   tenon_gf180_input_s u_mgmt_clk_pad (
       .pad        (mgmt_clk_pad),
       .pad_to_core(mgmt_clk_i),
-      .dvdd       (dvdd),
-      .dvss       (dvss),
+      .dvdd       (iovdd),
+      .dvss       (iovss),
       .vdd        (vdd),
       .vss        (vss)
   );
   tenon_gf180_input_c u_mgmt_rst_n_pad (
       .pad        (mgmt_rst_n_pad),
       .pad_to_core(mgmt_rst_ni),
-      .dvdd       (dvdd),
-      .dvss       (dvss),
+      .dvdd       (iovdd),
+      .dvss       (iovss),
       .vdd        (vdd),
       .vss        (vss)
   );
   tenon_gf180_input_s u_jtag_tck_pad (
       .pad        (jtag_tck_pad),
       .pad_to_core(jtag_tck_i),
-      .dvdd       (dvdd),
-      .dvss       (dvss),
+      .dvdd       (iovdd),
+      .dvss       (iovss),
       .vdd        (vdd),
       .vss        (vss)
   );
   tenon_gf180_input_c u_jtag_tms_pad (
       .pad        (jtag_tms_pad),
       .pad_to_core(jtag_tms_i),
-      .dvdd       (dvdd),
-      .dvss       (dvss),
+      .dvdd       (iovdd),
+      .dvss       (iovss),
       .vdd        (vdd),
       .vss        (vss)
   );
   tenon_gf180_input_c u_jtag_tdi_pad (
       .pad        (jtag_tdi_pad),
       .pad_to_core(jtag_tdi_i),
-      .dvdd       (dvdd),
-      .dvss       (dvss),
+      .dvdd       (iovdd),
+      .dvss       (iovss),
       .vdd        (vdd),
       .vss        (vss)
   );
@@ -182,16 +183,16 @@ module tenon_tier0_padframe_gf180 #(
       .pad_to_core(),
       .core_to_pad(jtag_tdo_o),
       .core_oe    (1'b1),
-      .dvdd       (dvdd),
-      .dvss       (dvss),
+      .dvdd       (iovdd),
+      .dvss       (iovss),
       .vdd        (vdd),
       .vss        (vss)
   );
   tenon_gf180_input_c u_uart_rx_pad (
       .pad        (uart_rx_pad),
       .pad_to_core(uart_rx_i),
-      .dvdd       (dvdd),
-      .dvss       (dvss),
+      .dvdd       (iovdd),
+      .dvss       (iovss),
       .vdd        (vdd),
       .vss        (vss)
   );
@@ -200,8 +201,8 @@ module tenon_tier0_padframe_gf180 #(
       .pad_to_core(),
       .core_to_pad(uart_tx_o),
       .core_oe    (1'b1),
-      .dvdd       (dvdd),
-      .dvss       (dvss),
+      .dvdd       (iovdd),
+      .dvss       (iovss),
       .vdd        (vdd),
       .vss        (vss)
   );
@@ -213,8 +214,8 @@ module tenon_tier0_padframe_gf180 #(
           .pad_to_core(gpio_i[index]),
           .core_to_pad(gpio_o[index]),
           .core_oe    (gpio_oe[index]),
-          .dvdd       (dvdd),
-          .dvss       (dvss),
+          .dvdd       (iovdd),
+          .dvss       (iovss),
           .vdd        (vdd),
           .vss        (vss)
       );

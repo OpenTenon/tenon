@@ -6,7 +6,7 @@
       "id": "ihp-sg13g2",
       "padframe_module": "tenon_tier0_padframe",
       "reference_module": "tenon_tier0_reference",
-      "physical_flow": "flow/qfn*.yaml",
+      "physical_flow": "flow/ihp130/qfn*.yaml",
       "io_library": "sg13g2_io",
       "rail_mapping": {
         "VDD": "VDD",
@@ -35,15 +35,23 @@
       "padframe_module": "tenon_tier0_padframe_gf180",
       "reference_module": "tenon_tier0_reference_gf180",
       "package_top_prefix": "tenon_tier0_gf180_",
+      "physical_flow": "flow/gf180/qfn*.yaml",
       "io_library": "gf180mcu_ocd_io",
-      "reference_pdk_tag": "1.8.0",
+      "reference_pdk_tag": "f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7",
       "rail_mapping": {
-        "VDD": "DVDD",
-        "VSS": "DVSS",
-        "IOVDD": "VDD",
-        "IOVSS": "VSS"
+        "VDD": "VDD",
+        "VSS": "VSS",
+        "IOVDD": "DVDD",
+        "IOVSS": "DVSS"
       },
-      "physical_flow_status": "requires a PDK-specific pad placement and PDN audit"
+      "floorplan": {
+        "pad_width_um": 75,
+        "corner_width_um": 355,
+        "edge_spacing_um": 26,
+        "pad_spacing_um": 60,
+        "core_offset_um": 442
+      },
+      "physical_flow_status": "GF180 OCD reference flow generated from audited PDK geometry"
     }
   ]
 }

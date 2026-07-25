@@ -16,47 +16,60 @@ IHP_IO_MODEL    ?= $(PDK_ROOT)/$(PDK)/libs.ref/sg13g2_io/verilog/sg13g2_io.v
 SKY130_PDK      ?= sky130A
 SKY130_IO_MODEL ?= $(PDK_ROOT)/$(SKY130_PDK)/libs.ref/sky130_fd_io/verilog/sky130_fd_io.v
 GF180_PDK       ?= gf180mcuD
-GF180_IO_MODEL  ?= $(PDK_ROOT)/$(GF180_PDK)/libs.ref/gf180mcu_ocd_io/verilog/gf180mcu_ocd_io.v
+GF180_PDK_ROOT  ?= $(PDK_ROOT)
+GF180_SCL       ?= gf180mcu_fd_sc_mcu7t5v0
+GF180_PAD       ?= gf180mcu_ocd_io
+GF180_IO_MODEL  ?= $(GF180_PDK_ROOT)/$(GF180_PDK)/libs.ref/$(GF180_PAD)/verilog/$(GF180_PAD).v
 
 CI_IHP_IO_MODEL    := tb/ci_sg13g2_io_stub.sv
 CI_SKY130_IO_MODEL := tb/ci_sky130_fd_io_stub.sv
 CI_GF180_IO_MODEL  := tb/ci_gf180mcu_ocd_io_stub.sv
 BUILD_DIR          := build
 
+IHP_FLOW_DIR   := flow/ihp130
+GF180_FLOW_DIR := flow/gf180
 .DEFAULT_GOAL := help
 
 ifneq ($(filter 1 true TRUE yes YES,$(SKIP_DRC)),)
-DRC_OVERRIDES := --override-config RUN_MAGIC_DRC=false --override-config RUN_KLAYOUT_DRC=false
+IHP_DRC_OVERRIDES := --override-config RUN_MAGIC_DRC=false --override-config RUN_KLAYOUT_DRC=false
+GF180_DRC_SKIPS   := --skip Magic.DRC --skip KLayout.DRC
 endif
 
-.PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-ihp sim-sky130 sim-gf180 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 lint lint-ihp lint-sky130 lint-gf180 lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128
+.PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-ihp sim-sky130 sim-gf180 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 lint lint-ihp lint-sky130 lint-gf180 lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128
 
 help:
 	@echo "Usage: make <target> PDK_ROOT=/path/to/installed-pdk"
 	@echo ""
-	@echo "  generate            Regenerate IHP pin manifests and LibreLane configs"
-	@echo "  check-generated     Verify generated files are current"
-	@echo "  check               Run PDK-independent repository checks"
-	@echo "  format              Format tracked Makefiles, RTL, and testbench SystemVerilog"
-	@echo "  format-check        Verify tracked Makefile and SystemVerilog formatting"
-	@echo "  sim                 Run functional simulations for IHP, Sky130, and GF180"
-	@echo "  sim-compile         Compile all three PDK adapter test configurations"
-	@echo "  lint                Compile IHP fixed package tops with an installed IHP IO library"
-	@echo "  lint-sky130         Compile Sky130 fixed package tops with SKY130_IO_MODEL"
-	@echo "  lint-gf180          Compile GF180 fixed package tops with GF180_IO_MODEL"
-	@echo "  test                Run IHP IO behavioral-library tests"
-	@echo "  harden-qfn32        Run the IHP LibreLane flow for one package profile"
+	@echo "  generate              Regenerate pin manifests and LibreLane configs"
+	@echo "  check-generated       Verify generated files are current"
+	@echo "  check                 Run PDK-independent repository checks"
+	@echo "  format                Format tracked Makefiles, RTL, and testbench SystemVerilog"
+	@echo "  format-check          Verify tracked Makefile and SystemVerilog formatting"
+	@echo "  sim                   Run functional simulations for IHP, Sky130, and GF180"
+	@echo "  sim-compile           Compile all three PDK adapter test configurations"
+	@echo "  lint                  Compile IHP fixed package tops with an installed IHP IO library"
+	@echo "  lint-sky130           Compile Sky130 fixed package tops with SKY130_IO_MODEL"
+	@echo "  lint-gf180            Compile GF180 fixed package tops with GF180_IO_MODEL"
+	@echo "  test                  Run IHP IO behavioral-library tests"
+	@echo "  harden-qfn32          Run the IHP LibreLane flow for one package profile"
 	@echo "  harden-qfn64"
 	@echo "  harden-qfn88"
 	@echo "  harden-qfn128"
-	@echo "  harden-all          Run all IHP hardening targets sequentially"
-	@echo "  SKIP_DRC=1          Skip Magic and KLayout DRC only (off by default)"
+	@echo "  harden-all            Run all IHP hardening targets sequentially"
+	@echo "  harden-gf180-qfn32    Run GF180 OCD LibreLane for one package profile"
+	@echo "  harden-gf180-qfn64"
+	@echo "  harden-gf180-qfn88"
+	@echo "  harden-gf180-qfn128"
+	@echo "  harden-gf180-all      Run all GF180 hardening targets sequentially"
+	@echo "  SKIP_DRC=1            Skip Magic and KLayout DRC only (off by default)"
 
 generate:
 	$(PYTHON) tools/generate_tier0.py
+	$(PYTHON) tools/generate_gf180_placement.py
 
 check-generated:
 	$(PYTHON) tools/generate_tier0.py --check
+	$(PYTHON) tools/generate_gf180_placement.py --check
 
 check: check-generated
 
@@ -117,8 +130,8 @@ check-pdk-sky130:
 	@test -f "$(SKY130_IO_MODEL)" || (echo "Missing $(SKY130_IO_MODEL); set SKY130_IO_MODEL if your PDK packages the IO model elsewhere" && exit 2)
 
 check-pdk-gf180:
-	@test -n "$(PDK_ROOT)" || (echo "PDK_ROOT must point to an installed GF180 PDK root" && exit 2)
-	@test -d "$(PDK_ROOT)/$(GF180_PDK)" || (echo "Missing $(PDK_ROOT)/$(GF180_PDK)" && exit 2)
+	@test -n "$(GF180_PDK_ROOT)" || (echo "GF180_PDK_ROOT must point to an installed GF180 PDK root" && exit 2)
+	@test -d "$(GF180_PDK_ROOT)/$(GF180_PDK)" || (echo "Missing $(GF180_PDK_ROOT)/$(GF180_PDK)" && exit 2)
 	@test -f "$(GF180_IO_MODEL)" || (echo "Missing $(GF180_IO_MODEL); set GF180_IO_MODEL if your PDK packages the IO model elsewhere" && exit 2)
 
 lint: lint-ihp
@@ -155,19 +168,37 @@ test: check-pdk-ihp
 	$(VVP) $(BUILD_DIR)/tests/tenon_tier0_tb.vvp
 
 harden-qfn32: generate check-pdk-ihp
-	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(DRC_OVERRIDES) --run-tag tenon-qfn32 --overwrite --save-views-to $(BUILD_DIR)/qfn32/final flow/qfn32.yaml
+	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn32 --overwrite $(IHP_FLOW_DIR)/qfn32.yaml
 
 harden-qfn64: generate check-pdk-ihp
-	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(DRC_OVERRIDES) --run-tag tenon-qfn64 --overwrite --save-views-to $(BUILD_DIR)/qfn64/final flow/qfn64.yaml
+	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn64 --overwrite $(IHP_FLOW_DIR)/qfn64.yaml
 
 harden-qfn88: generate check-pdk-ihp
-	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(DRC_OVERRIDES) --run-tag tenon-qfn88 --overwrite --save-views-to $(BUILD_DIR)/qfn88/final flow/qfn88.yaml
+	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn88 --overwrite $(IHP_FLOW_DIR)/qfn88.yaml
 
 harden-qfn128: generate check-pdk-ihp
-	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(DRC_OVERRIDES) --run-tag tenon-qfn128 --overwrite --save-views-to $(BUILD_DIR)/qfn128/final flow/qfn128.yaml
+	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn128 --overwrite $(IHP_FLOW_DIR)/qfn128.yaml
 
 harden-all:
 	$(MAKE) harden-qfn32 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-qfn64 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-qfn88 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-qfn128 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+
+harden-gf180-qfn32: generate check-pdk-gf180
+	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn32 --overwrite $(GF180_FLOW_DIR)/qfn32.yaml $(GF180_FLOW_DIR)/qfn32_placement.yaml $(GF180_FLOW_DIR)/overrides.yaml
+
+harden-gf180-qfn64: generate check-pdk-gf180
+	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn64 --overwrite $(GF180_FLOW_DIR)/qfn64.yaml $(GF180_FLOW_DIR)/qfn64_placement.yaml $(GF180_FLOW_DIR)/overrides.yaml
+
+harden-gf180-qfn88: generate check-pdk-gf180
+	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn88 --overwrite $(GF180_FLOW_DIR)/qfn88.yaml $(GF180_FLOW_DIR)/qfn88_placement.yaml $(GF180_FLOW_DIR)/overrides.yaml
+
+harden-gf180-qfn128: generate check-pdk-gf180
+	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn128 --overwrite $(GF180_FLOW_DIR)/qfn128.yaml $(GF180_FLOW_DIR)/qfn128_placement.yaml $(GF180_FLOW_DIR)/overrides.yaml
+
+harden-gf180-all:
+	$(MAKE) harden-gf180-qfn32 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-gf180-qfn64 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-gf180-qfn88 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-gf180-qfn128 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"

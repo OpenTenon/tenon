@@ -1,5 +1,6 @@
 build/
-flow/runs/
+flow/ihp130/runs/
+flow/gf180/runs/
 *.vvp
 *.fst
 __pycache__/
