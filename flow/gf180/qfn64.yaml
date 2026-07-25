@@ -3,6 +3,9 @@
 meta:
   version: 3
   flow: Chip
+  substituting_steps:
+    # Preserve the OCD IO cells' explicit four-rail RTL connectivity.
+    Odb.SetPowerConnections: null
 
 DESIGN_NAME: tenon_tier0_gf180_qfn64
 VERILOG_FILES:
@@ -28,79 +31,79 @@ PRIMARY_GDSII_STREAMOUT_TOOL: klayout
 
 PAD_SOUTH:
 - "u_reference.u_padframe.u_iovdd_pads\\[0\\].u_pad"
-- "u_reference.u_padframe.u_mgmt_clk_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[0\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[1\\].u_pad"
+- "u_reference.u_padframe.u_mgmt_clk_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[0\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[1\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_iovss_pads\\[0\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[2\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[3\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[4\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[2\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[3\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[4\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_vdd_pads\\[0\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[5\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[6\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[7\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[5\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[6\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[7\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_vss_pads\\[0\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[8\\].u_pad"
-- "u_reference.u_padframe.u_mgmt_rst_n_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[9\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[8\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_mgmt_rst_n_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[9\\].u_pad.u_pad"
 
 PAD_EAST:
 - "u_reference.u_padframe.u_iovdd_pads\\[1\\].u_pad"
-- "u_reference.u_padframe.u_jtag_tck_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[10\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[11\\].u_pad"
+- "u_reference.u_padframe.u_jtag_tck_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[10\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[11\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_iovss_pads\\[1\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[12\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[13\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[14\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[12\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[13\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[14\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_vdd_pads\\[1\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[15\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[16\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[17\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[15\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[16\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[17\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_vss_pads\\[1\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[18\\].u_pad"
-- "u_reference.u_padframe.u_jtag_tms_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[19\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[18\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_jtag_tms_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[19\\].u_pad.u_pad"
 
 PAD_NORTH:
-- "u_reference.u_padframe.u_gpio_pads\\[29\\].u_pad"
-- "u_reference.u_padframe.u_jtag_tdo_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[28\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[29\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_jtag_tdo_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[28\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_vss_pads\\[2\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[27\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[26\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[25\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[27\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[26\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[25\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_vdd_pads\\[2\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[24\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[23\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[22\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[24\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[23\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[22\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_iovss_pads\\[2\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[21\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[20\\].u_pad"
-- "u_reference.u_padframe.u_jtag_tdi_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[21\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[20\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_jtag_tdi_pad.u_pad"
 - "u_reference.u_padframe.u_iovdd_pads\\[2\\].u_pad"
 
 PAD_WEST:
-- "u_reference.u_padframe.u_gpio_pads\\[39\\].u_pad"
-- "u_reference.u_padframe.u_uart_tx_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[38\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[39\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_uart_tx_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[38\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_vss_pads\\[3\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[37\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[36\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[35\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[37\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[36\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[35\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_vdd_pads\\[3\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[34\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[33\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[32\\].u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[34\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[33\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[32\\].u_pad.u_pad"
 - "u_reference.u_padframe.u_iovss_pads\\[3\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[31\\].u_pad"
-- "u_reference.u_padframe.u_gpio_pads\\[30\\].u_pad"
-- "u_reference.u_padframe.u_uart_rx_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[31\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_gpio_pads\\[30\\].u_pad.u_pad"
+- "u_reference.u_padframe.u_uart_rx_pad.u_pad"
 - "u_reference.u_padframe.u_iovdd_pads\\[3\\].u_pad"
 
-# VDD/VSS are the GF180 standard-cell core rails; DVDD/DVSS are IO rails.
-VDD_NETS: [vdd, dvdd]
-GND_NETS: [vss, dvss]
+# VDD/VSS are the GF180 standard-cell core rails; iovdd/iovss feed OCD IO rails.
+VDD_NETS: [vdd, iovdd]
+GND_NETS: [vss, iovss]
 CLOCK_PORT: mgmt_clk_pad
 CLOCK_NET: u_reference.u_padframe.u_mgmt_clk_pad.u_pad/Y
 CLOCK_PERIOD: 20
@@ -130,3 +133,5 @@ PDN_CORE_HORIZONTAL_LAYER: Metal3
 IGNORE_DISCONNECTED_MODULES:
 - gf180mcu_ocd_io__bi_24t
 MAGIC_EXT_UNIQUE: notopports
+KLAYOUT_FILLER_OPTIONS:
+  Metal2_ignore_active: true

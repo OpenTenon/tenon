@@ -65,11 +65,9 @@ help:
 
 generate:
 	$(PYTHON) tools/generate_tier0.py
-	$(PYTHON) tools/generate_gf180_placement.py
 
 check-generated:
 	$(PYTHON) tools/generate_tier0.py --check
-	$(PYTHON) tools/generate_gf180_placement.py --check
 
 check: check-generated
 
@@ -186,16 +184,16 @@ harden-all:
 	$(MAKE) harden-qfn128 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 
 harden-gf180-qfn32: generate check-pdk-gf180
-	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn32 --overwrite $(GF180_FLOW_DIR)/qfn32.yaml $(GF180_FLOW_DIR)/qfn32_placement.yaml $(GF180_FLOW_DIR)/overrides.yaml
+	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn32 --overwrite $(GF180_FLOW_DIR)/qfn32.yaml
 
 harden-gf180-qfn64: generate check-pdk-gf180
-	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn64 --overwrite $(GF180_FLOW_DIR)/qfn64.yaml $(GF180_FLOW_DIR)/qfn64_placement.yaml $(GF180_FLOW_DIR)/overrides.yaml
+	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn64 --overwrite $(GF180_FLOW_DIR)/qfn64.yaml
 
 harden-gf180-qfn88: generate check-pdk-gf180
-	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn88 --overwrite $(GF180_FLOW_DIR)/qfn88.yaml $(GF180_FLOW_DIR)/qfn88_placement.yaml $(GF180_FLOW_DIR)/overrides.yaml
+	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn88 --overwrite $(GF180_FLOW_DIR)/qfn88.yaml
 
 harden-gf180-qfn128: generate check-pdk-gf180
-	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn128 --overwrite $(GF180_FLOW_DIR)/qfn128.yaml $(GF180_FLOW_DIR)/qfn128_placement.yaml $(GF180_FLOW_DIR)/overrides.yaml
+	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn128 --overwrite $(GF180_FLOW_DIR)/qfn128.yaml
 
 harden-gf180-all:
 	$(MAKE) harden-gf180-qfn32 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
