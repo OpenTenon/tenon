@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Sky130A Tier0 adapter using sky130_fd_io power-aware PadCells.
+// Sky130A Tier0 adapter using physical sky130_ef_io PadCell wrappers.
 
 `default_nettype none
 
@@ -21,7 +21,7 @@ module tenon_sky130_gpio (
   (* keep = "true" *)wire [2:0] drive_mode;
   assign drive_mode = {control_high, control_high, control_low};
 
-  (* keep = "true" *) sky130_fd_io__top_gpiov2 u_pad (
+  (* keep = "true" *) sky130_ef_io__gpiov2_pad_wrapped u_pad (
       .PAD             (pad),
       .OUT             (core_to_pad),
       .OE_N            (~core_oe),
@@ -54,9 +54,9 @@ module tenon_sky130_gpio (
       .VDDIO           (vddio),
       .VSSIO           (vssio),
       .VDDIO_Q         (vddio),
-      .VCCHIB          (vddio),
+      .VCCHIB          (vccd),
       .VDDA            (vddio),
-      .VSSA            (vssd),
+      .VSSA            (vssio),
       .VSWITCH         (vddio),
       .VSSIO_Q         (vssio)
   );
@@ -96,85 +96,77 @@ module tenon_tier0_padframe_sky130 #(
 
   generate
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_iovdd_pads
-      (* keep = "true" *) sky130_fd_io__top_power_hvc_wpad u_pad (
-          .P_PAD      (vddio),
-          .P_CORE     (vddio),
+      (* keep = "true" *) sky130_ef_io__vddio_hvc_pad u_pad (
+          .VDDIO_PAD  (vddio),
           .AMUXBUS_A  (),
           .AMUXBUS_B  (),
           .DRN_HVC    (),
-          .OGC_HVC    (),
           .SRC_BDY_HVC(),
           .VCCD       (vccd),
           .VSSD       (vssd),
           .VDDIO      (vddio),
           .VSSIO      (vssio),
           .VDDIO_Q    (vddio),
-          .VCCHIB     (vddio),
+          .VCCHIB     (vccd),
           .VDDA       (vddio),
-          .VSSA       (vssd),
+          .VSSA       (vssio),
           .VSWITCH    (vddio),
           .VSSIO_Q    (vssio)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_iovss_pads
-      (* keep = "true" *) sky130_fd_io__top_ground_hvc_wpad u_pad (
-          .G_PAD      (vssio),
-          .G_CORE     (vssio),
+      (* keep = "true" *) sky130_ef_io__vssio_hvc_pad u_pad (
+          .VSSIO_PAD  (vssio),
           .AMUXBUS_A  (),
           .AMUXBUS_B  (),
           .DRN_HVC    (),
-          .OGC_HVC    (),
           .SRC_BDY_HVC(),
           .VCCD       (vccd),
           .VSSD       (vssd),
           .VDDIO      (vddio),
           .VSSIO      (vssio),
           .VDDIO_Q    (vddio),
-          .VCCHIB     (vddio),
+          .VCCHIB     (vccd),
           .VDDA       (vddio),
-          .VSSA       (vssd),
+          .VSSA       (vssio),
           .VSWITCH    (vddio),
           .VSSIO_Q    (vssio)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vdd_pads
-      (* keep = "true" *) sky130_fd_io__top_power_hvc_wpad u_pad (
-          .P_PAD      (vccd),
-          .P_CORE     (vccd),
+      (* keep = "true" *) sky130_ef_io__vccd_hvc_pad u_pad (
+          .VCCD_PAD   (vccd),
           .AMUXBUS_A  (),
           .AMUXBUS_B  (),
           .DRN_HVC    (),
-          .OGC_HVC    (),
           .SRC_BDY_HVC(),
           .VCCD       (vccd),
           .VSSD       (vssd),
           .VDDIO      (vddio),
           .VSSIO      (vssio),
           .VDDIO_Q    (vddio),
-          .VCCHIB     (vddio),
+          .VCCHIB     (vccd),
           .VDDA       (vddio),
-          .VSSA       (vssd),
+          .VSSA       (vssio),
           .VSWITCH    (vddio),
           .VSSIO_Q    (vssio)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vss_pads
-      (* keep = "true" *) sky130_fd_io__top_ground_hvc_wpad u_pad (
-          .G_PAD      (vssd),
-          .G_CORE     (vssd),
+      (* keep = "true" *) sky130_ef_io__vssd_hvc_pad u_pad (
+          .VSSD_PAD   (vssd),
           .AMUXBUS_A  (),
           .AMUXBUS_B  (),
           .DRN_HVC    (),
-          .OGC_HVC    (),
           .SRC_BDY_HVC(),
           .VCCD       (vccd),
           .VSSD       (vssd),
           .VDDIO      (vddio),
           .VSSIO      (vssio),
           .VDDIO_Q    (vddio),
-          .VCCHIB     (vddio),
+          .VCCHIB     (vccd),
           .VDDA       (vddio),
-          .VSSA       (vssd),
+          .VSSA       (vssio),
           .VSWITCH    (vddio),
           .VSSIO_Q    (vssio)
       );

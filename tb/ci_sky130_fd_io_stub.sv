@@ -92,4 +92,130 @@ module sky130_fd_io__top_ground_hvc_wpad (
   tran (G_CORE, G_PAD);
 endmodule
 
+module sky130_ef_io__gpiov2_pad_wrapped (
+    input  wire       OUT,
+    OE_N,
+    HLD_H_N,
+    ENABLE_H,
+    ENABLE_INP_H,
+    ENABLE_VDDA_H,
+    input  wire       ENABLE_VSWITCH_H,
+    ENABLE_VDDIO,
+    INP_DIS,
+    IB_MODE_SEL,
+    VTRIP_SEL,
+    input  wire       SLOW,
+    HLD_OVR,
+    ANALOG_EN,
+    ANALOG_SEL,
+    ANALOG_POL,
+    input  wire [2:0] DM,
+    inout  wire       VDDIO,
+    VDDIO_Q,
+    VDDA,
+    VCCD,
+    VSWITCH,
+    VCCHIB,
+    VSSA,
+    VSSD,
+    VSSIO_Q,
+    inout  wire       VSSIO,
+    PAD,
+    PAD_A_NOESD_H,
+    PAD_A_ESD_0_H,
+    PAD_A_ESD_1_H,
+    AMUXBUS_A,
+    inout  wire       AMUXBUS_B,
+    output wire       IN,
+    IN_H,
+    TIE_HI_ESD,
+    TIE_LO_ESD
+);
+  assign PAD        = (OE_N == 1'b0 && DM != 3'b000 && DM != 3'b001) ? OUT : 1'bz;
+  assign IN         = PAD;
+  assign IN_H       = PAD;
+  assign TIE_HI_ESD = 1'b1;
+  assign TIE_LO_ESD = 1'b0;
+endmodule
+
+module sky130_ef_io__vccd_hvc_pad (
+    inout wire AMUXBUS_A,
+    AMUXBUS_B,
+    DRN_HVC,
+    SRC_BDY_HVC,
+    VSSA,
+    VDDA,
+    VSWITCH,
+    inout wire VDDIO_Q,
+    VCCHIB,
+    VDDIO,
+    VCCD,
+    VCCD_PAD,
+    VSSIO,
+    VSSD,
+    VSSIO_Q
+);
+  tran (VCCD, VCCD_PAD);
+endmodule
+
+module sky130_ef_io__vddio_hvc_pad (
+    inout wire AMUXBUS_A,
+    AMUXBUS_B,
+    DRN_HVC,
+    SRC_BDY_HVC,
+    VSSA,
+    VDDA,
+    VSWITCH,
+    inout wire VDDIO_Q,
+    VCCHIB,
+    VDDIO,
+    VDDIO_PAD,
+    VCCD,
+    VSSIO,
+    VSSD,
+    VSSIO_Q
+);
+  tran (VDDIO, VDDIO_PAD);
+endmodule
+
+module sky130_ef_io__vssd_hvc_pad (
+    inout wire AMUXBUS_A,
+    AMUXBUS_B,
+    DRN_HVC,
+    SRC_BDY_HVC,
+    VSSA,
+    VDDA,
+    VSWITCH,
+    inout wire VDDIO_Q,
+    VCCHIB,
+    VDDIO,
+    VCCD,
+    VSSIO,
+    VSSD,
+    VSSD_PAD,
+    VSSIO_Q
+);
+  tran (VSSD, VSSD_PAD);
+endmodule
+
+module sky130_ef_io__vssio_hvc_pad (
+    inout wire AMUXBUS_A,
+    AMUXBUS_B,
+    DRN_HVC,
+    SRC_BDY_HVC,
+    VSSA,
+    VDDA,
+    VSWITCH,
+    inout wire VDDIO_Q,
+    VCCHIB,
+    VDDIO,
+    VCCD,
+    VSSIO,
+    VSSIO_PAD,
+    VSSD,
+    VSSIO_Q
+);
+  tran (VSSIO, VSSIO_PAD);
+endmodule
+
 `default_nettype wire

@@ -5,7 +5,11 @@ source $::env(SCRIPTS_DIR)/openroad/common/io.tcl
 source $::env(SCRIPTS_DIR)/openroad/common/set_global_connections.tcl
 set_global_connections
 
-set_voltage_domain -name CORE -power $::env(VDD_NET) -ground $::env(GND_NET)
+# Only VCCD/VSSD are a core PDN domain. VDDIO/VSSIO are independent package
+# supply domains and receive their own explicit, PSM-visible bridge geometry.
+set_voltage_domain -name CORE \
+    -power $::env(VDD_NET) \
+    -ground $::env(GND_NET)
 define_pdn_grid -name stdcell_grid -starts_with POWER -voltage_domain CORE
 
 add_pdn_stripe \
@@ -46,8 +50,15 @@ add_pdn_ring \
     -layers "$::env(PDN_CORE_VERTICAL_LAYER) $::env(PDN_CORE_HORIZONTAL_LAYER)" \
     -widths "$::env(PDN_CORE_RING_VWIDTH) $::env(PDN_CORE_RING_HWIDTH)" \
     -spacings "$::env(PDN_CORE_RING_VSPACING) $::env(PDN_CORE_RING_HSPACING)" \
-    -core_offset "$::env(PDN_CORE_RING_VOFFSET) $::env(PDN_CORE_RING_HOFFSET)" \
-    -connect_to_pads
+    -core_offsets "$::env(PDN_CORE_RING_VOFFSET) $::env(PDN_CORE_RING_HOFFSET)"
+
+set tenon_sky130_profile [string map {tenon_tier0_sky130_ ""} $::env(DESIGN_NAME)]
+set tenon_sky130_bridge_file [format "%s_pdn_bridge.tcl" $tenon_sky130_profile]
+set tenon_sky130_bridge [file join [file dirname [info script]] generated $tenon_sky130_bridge_file]
+if {![file exists $tenon_sky130_bridge]} {
+    error "Missing generated Sky130 PDN bridge $tenon_sky130_bridge"
+}
+source $tenon_sky130_bridge
 
 define_pdn_grid -macro -default -name macro -starts_with POWER \
     -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"

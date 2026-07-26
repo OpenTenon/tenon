@@ -33,7 +33,7 @@
       "reference_pdk_tag": "8afc8346a57fe1ab7934ba5a6056ea8b43078e71",
       "standard_cell_library": "sky130_fd_sc_hd",
       "pad_library": "sky130_fd_io",
-      "physical_flow_status": "requires a PDK-specific pad placement and PDN audit"
+      "physical_flow_status": "Sky130 EF-IO wrapper reference flow generated from audited Ciel geometry"
     },
     {
       "id": "gf180mcuD",

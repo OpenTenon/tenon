@@ -20,6 +20,7 @@ SKY130_PDK_ROOT      ?= $(SKY130_CIEL_ROOT)
 SKY130_SCL           ?= sky130_fd_sc_hd
 SKY130_DRT_OPT_ITERS ?= 64
 SKY130_IO_MODEL      ?= $(SKY130_PDK_ROOT)/$(SKY130_PDK)/libs.ref/sky130_fd_io/verilog/sky130_fd_io.v
+SKY130_EF_IO_MODEL   ?= $(SKY130_PDK_ROOT)/$(SKY130_PDK)/libs.ref/sky130_fd_io/verilog/sky130_ef_io.v
 GF180_PDK            ?= gf180mcuD
 GF180_CIEL_ROOT      ?= $(HOME)/.ciel/ciel/gf180mcu/versions/f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7
 GF180_PDK_ROOT       ?= $(GF180_CIEL_ROOT)
@@ -141,6 +142,7 @@ check-pdk-sky130:
 	@test -n "$(SKY130_PDK_ROOT)" || (echo "SKY130_PDK_ROOT must point to an installed Sky130 PDK root" && exit 2)
 	@test -d "$(SKY130_PDK_ROOT)/$(SKY130_PDK)" || (echo "Missing $(SKY130_PDK_ROOT)/$(SKY130_PDK)" && exit 2)
 	@test -f "$(SKY130_IO_MODEL)" || (echo "Missing $(SKY130_IO_MODEL); set SKY130_IO_MODEL if your PDK packages the IO model elsewhere" && exit 2)
+	@test -f "$(SKY130_EF_IO_MODEL)" || (echo "Missing $(SKY130_EF_IO_MODEL); set SKY130_EF_IO_MODEL if your PDK packages the EF-IO model elsewhere" && exit 2)
 
 check-pdk-gf180:
 	@test -n "$(GF180_PDK_ROOT)" || (echo "GF180_PDK_ROOT must point to an installed GF180 PDK root" && exit 2)
@@ -164,10 +166,10 @@ lint-qfn128:
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_qfn128 $(IHP_IO_MODEL) $(IHP_RTL)
 
 lint-sky130: check-pdk-sky130
-	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn32 $(SKY130_IO_MODEL) $(SKY130_RTL)
-	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn64 $(SKY130_IO_MODEL) $(SKY130_RTL)
-	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn88 $(SKY130_IO_MODEL) $(SKY130_RTL)
-	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn128 $(SKY130_IO_MODEL) $(SKY130_RTL)
+	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn32 $(SKY130_IO_MODEL) $(SKY130_EF_IO_MODEL) $(SKY130_RTL)
+	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn64 $(SKY130_IO_MODEL) $(SKY130_EF_IO_MODEL) $(SKY130_RTL)
+	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn88 $(SKY130_IO_MODEL) $(SKY130_EF_IO_MODEL) $(SKY130_RTL)
+	$(IVERILOG) -g2012 -DUSE_POWER_PINS -tnull -s tenon_tier0_sky130_qfn128 $(SKY130_IO_MODEL) $(SKY130_EF_IO_MODEL) $(SKY130_RTL)
 
 lint-gf180: check-pdk-gf180
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_gf180_qfn32 $(GF180_IO_MODEL) $(GF180_RTL)

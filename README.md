@@ -33,12 +33,12 @@ QFN N means N wire-bondable package leads. An optional exposed pad is a package 
 |---|---|---|---|---|---|
 | IHP SG13G2 | `tenon_tier0_padframe` | `sg13g2_io` | `VDD/VSS` | `IOVDD/IOVSS` | `flow/ihp130/qfn*.yaml` |
 | GF180MCU D | `tenon_tier0_padframe_gf180` | `gf180mcu_ocd_io` | `VDD/VSS` | `DVDD/DVSS` | `flow/gf180/qfn*.yaml` |
-| Sky130A | `tenon_tier0_padframe_sky130` | `sky130_fd_io` | `VCCD/VSSD` | `VDDIO/VSSIO` | `flow/sky130/qfn*.yaml` |
+| Sky130A | `tenon_tier0_padframe_sky130` | `sky130_fd_io` with `sky130_ef_io` wrappers | `VCCD/VSSD` | `VDDIO/VSSIO` | `flow/sky130/qfn*.yaml` |
 
 
 All physical flows default to installed Ciel revisions: IHP SG13G2 `3b5a704ba6738aa686b08706187830e6284d2a10`, Sky130A `8afc8346a57fe1ab7934ba5a6056ea8b43078e71`, and GF180MCU `f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7`.
 
-Sky130 uses `sky130_fd_sc_hd` and explicit `sky130_fd_io` LEF/GDS/Liberty assets. Each `top_gpiov2` loops its PDK-provided `TIE_HI_ESD` and `TIE_LO_ESD` outputs back to its own static controls, following the Tiny Tapeout IO model without introducing cross-die static-control routes. Its pad ring is placed through committed PDK-specific Tcl rather than repository-managed PDK installation.
+Sky130 uses `sky130_fd_sc_hd`, raw `sky130_fd_io` base cells, and PDK-provided `sky130_ef_io` physical wrappers. Each GPIO retains its local `TIE_HI_ESD`/`TIE_LO_ESD` static-control loop. `make generate` emits fixed-coordinate, RTL-backed pad placement Tcl for every Sky130 QFN profile, plus PSM-visible package-to-PDN bridge Tcl. Magic extracts the final GDS and uses LEF interfaces only for the named PDK IO hard-macro hierarchy, so LVS checks top-level routing and every macro boundary without re-extracting unsupported internal geometry. The core grid serves only `VCCD/VSSD`; `VDDIO/VSSIO` remain separate peripheral special-net rings and never enter the core grid. Its pad placement is committed PDK-specific Tcl rather than repository-managed PDK installation.
 
 GF180's core standard-cell library uses `VDD/VSS`; the OCD IO library calls its separate IO rails `DVDD/DVSS`. The GF180 pad ring therefore connects the core PDN only to `VDD/VSS` and maintains `DVDD/DVSS` as a separate abutted ring.
 
@@ -83,7 +83,7 @@ make harden-sky130-all SKY130_PDK_ROOT=/path/to/sky130-pdk-root
 make harden-gf180-all GF180_PDK_ROOT=/path/to/gf180mcu
 ```
 
-Set `SKIP_DRC=1` only for a user-authorized non-signoff iteration. It skips Magic and KLayout DRC only; LVS, antenna, connectivity and the remaining checks continue to run. `SKY130_DRT_OPT_ITERS` defaults to `64`; use `SKY130_DRT_OPT_ITERS=0` only to produce a fast Sky130 reference run. Default hardening retains all checks except the IHP template's intentional bondpad/pad `Checker.IllegalOverlap` suppression.
+Set `SKIP_DRC=1` only for a user-authorized non-signoff iteration. It skips Magic and KLayout DRC only; LVS, antenna, connectivity and the remaining checks continue to run. `SKY130_DRT_OPT_ITERS` defaults to `64`; completion runs must retain a nonzero detailed-routing budget. Default hardening retains all checks except the IHP template's intentional bondpad/pad `Checker.IllegalOverlap` suppression.
 
 LibreLane retains complete native runs and final views under `flow/ihp130/runs/tenon-qfn*/final/`, `flow/sky130/runs/tenon-qfn*/final/`, and `flow/gf180/runs/tenon-qfn*/final/`. The PDK-specific design directories make identical run tags unambiguous; hardening does not create duplicate views under `build/`.
 
