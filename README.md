@@ -101,6 +101,10 @@ Set `SKIP_DRC=1` only for a user-authorized non-signoff iteration. It skips Magi
 
 LibreLane retains complete native runs and final views under `flow/ihp130/runs/tenon-qfn*/final/`, `flow/sky130/runs/tenon-qfn*/final/`, `flow/gf180/runs/tenon-qfn*/final/`, and `flow/ics55/runs/tenon-qfn*-{no-pll,pll}/final/`. Hardening does not create duplicate views under `build/`.
 
+## Smoke Designs
+
+`smoke/` contains ten small H7CR standard-cell designs intended for digital-design newcomers. Each directory has only SystemVerilog RTL and a LibreLane `config.json`. Run `make lint-smoke` to compile their tops, `make smoke-run` to harden all ten serially with the manual ICS55 PDK, and `make smoke-report` to refresh `smoke/REPORTS.md`. The non-signoff smoke runner skips Magic/KLayout DRC, Magic Spice extraction and Netgen LVS, but retains PDN, OpenROAD antenna, route-DRC, connectivity and timing checks. It generates a portable abstract LEF from the finished OpenROAD database before its LEF antenna-property check; see `smoke/README.md` for the run details and retained warnings.
+
 ## Verification
 
 `make sim` runs management/GPIO behavior tests for IHP, Sky130, GF180 and both ICS55 variants across QFN32/64/88/128; the ICS55 PLL test also checks the PXWE1/PLL wrapper path. `make test` additionally runs the IHP behavioral IO library. `make lint-sky130`, `make lint-gf180` and `make lint-ics55` compile each fixed QFN top against their respective production or manual-PDK IO views.

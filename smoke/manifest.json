@@ -1,0 +1,64 @@
+{
+  "designs": [
+    {
+      "name": "inverter",
+      "top": "inverter",
+      "source": "inverter.sv",
+      "kind": "combinational"
+    },
+    {
+      "name": "and2",
+      "top": "and2",
+      "source": "and2.sv",
+      "kind": "combinational"
+    },
+    {
+      "name": "xor2",
+      "top": "xor2",
+      "source": "xor2.sv",
+      "kind": "combinational"
+    },
+    {
+      "name": "mux2",
+      "top": "mux2",
+      "source": "mux2.sv",
+      "kind": "combinational"
+    },
+    {
+      "name": "full_adder",
+      "top": "full_adder",
+      "source": "full_adder.sv",
+      "kind": "combinational"
+    },
+    {
+      "name": "decoder2to4",
+      "top": "decoder2to4",
+      "source": "decoder2to4.sv",
+      "kind": "combinational"
+    },
+    {
+      "name": "priority_encoder4to2",
+      "top": "priority_encoder4to2",
+      "source": "priority_encoder4to2.sv",
+      "kind": "combinational"
+    },
+    {
+      "name": "register8",
+      "top": "register8",
+      "source": "register8.sv",
+      "kind": "sequential"
+    },
+    {
+      "name": "shift_register8",
+      "top": "shift_register8",
+      "source": "shift_register8.sv",
+      "kind": "sequential"
+    },
+    {
+      "name": "counter8",
+      "top": "counter8",
+      "source": "counter8.sv",
+      "kind": "sequential"
+    }
+  ]
+}
