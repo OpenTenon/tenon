@@ -127,7 +127,7 @@ PDN_CORE_HORIZONTAL_LAYER: met5
 RUN_IRDROP_REPORT: true
 ERROR_ON_PDN_VIOLATIONS: true
 MAGIC_EXT_UNIQUE: notopports
-MAGIC_EXT_USE_GDS: true
+MAGIC_EXT_USE_GDS: false
 MAGIC_EXT_ABSTRACT_CELLS:
 - ^sky130_ef_io__gpiov2_pad_wrapped$
 - ^sky130_ef_io__gpiov2_pad$

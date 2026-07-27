@@ -2,6 +2,7 @@ build/
 flow/ihp130/runs/
 flow/sky130/runs/
 flow/gf180/runs/
+flow/ics55/runs/
 *.vvp
 *.fst
 __pycache__/

@@ -1,17 +1,21 @@
-PYTHON         ?= python3
-IVERILOG       ?= iverilog
-VVP            ?= vvp
-MBAKE          ?= mbake
-VERIBLE_FORMAT ?= verible-verilog-format
-LIBRELANE      ?= librelane
-PDK            ?= ihp-sg13g2
-IHP_CIEL_ROOT  ?= $(HOME)/.ciel/ciel/ihp-sg13g2/versions/3b5a704ba6738aa686b08706187830e6284d2a10
-PDK_ROOT       ?= $(IHP_CIEL_ROOT)
-SKIP_DRC       ?= 0
+PYTHON           ?= python3
+IVERILOG         ?= iverilog
+VVP              ?= vvp
+MBAKE            ?= mbake
+VERIBLE_FORMAT   ?= verible-verilog-format
+LIBRELANE        ?= librelane
+PDK              ?= ihp-sg13g2
+IHP_CIEL_ROOT    ?= $(HOME)/.ciel/ciel/ihp-sg13g2/versions/3b5a704ba6738aa686b08706187830e6284d2a10
+OPENROAD         ?= openroad
+PDK_ROOT         ?= $(IHP_CIEL_ROOT)
+SKIP_DRC         ?= 0
+SKIP_MAGIC_SPICE ?= 0
+SKIP_NETGEN_LVS  ?= 0
 
 IHP_RTL    := rtl/tenon_tier0_padframe.sv rtl/tenon_tier0_reference.sv rtl/tenon_tier0_variants.sv
 SKY130_RTL := rtl/tenon_tier0_padframe_sky130.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 GF180_RTL  := rtl/tenon_tier0_padframe_gf180.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
+ICS55_RTL  := rtl/tenon_tier0_padframe_ics55.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 
 IHP_IO_MODEL         ?= $(PDK_ROOT)/$(PDK)/libs.ref/sg13g2_io/verilog/sg13g2_io.v
 SKY130_PDK           ?= sky130A
@@ -26,26 +30,43 @@ GF180_CIEL_ROOT      ?= $(HOME)/.ciel/ciel/gf180mcu/versions/f6eeac7dad085ffcc82
 GF180_PDK_ROOT       ?= $(GF180_CIEL_ROOT)
 GF180_SCL            ?= gf180mcu_fd_sc_mcu7t5v0
 GF180_PAD            ?= gf180mcu_ocd_io
+ICS55_PDK            ?= ics55
+ICS55_PDK_ROOT       ?= $(HOME)/.ciel/manual
+ICS55_SCL            ?= ics55_LLSC_H7CR
+ICS55_PAD            ?= ics55_io_3p3
+ICS55_DRT_THREADS    ?= 16
+ICS55_DRT_OPT_ITERS  ?= 1
 GF180_IO_MODEL       ?= $(GF180_PDK_ROOT)/$(GF180_PDK)/libs.ref/$(GF180_PAD)/verilog/$(GF180_PAD).v
 
 CI_IHP_IO_MODEL    := tb/ci_sg13g2_io_stub.sv
 CI_SKY130_IO_MODEL := tb/ci_sky130_fd_io_stub.sv
+CI_ICS55_IO_MODEL  := tb/ci_ics55_io_stub.sv
 CI_GF180_IO_MODEL  := tb/ci_gf180mcu_ocd_io_stub.sv
 BUILD_DIR          := build
 
 IHP_FLOW_DIR    := flow/ihp130
 GF180_FLOW_DIR  := flow/gf180
+ICS55_FLOW_DIR  := flow/ics55
 SKY130_FLOW_DIR := flow/sky130
 .DEFAULT_GOAL := help
 
 ifneq ($(filter 1 true TRUE yes YES,$(SKIP_DRC)),)
 IHP_DRC_OVERRIDES := --override-config RUN_MAGIC_DRC=false --override-config RUN_KLAYOUT_DRC=false
 GF180_DRC_SKIPS   := --skip Magic.DRC --skip KLayout.DRC
+ICS55_DRC_SKIPS   := --skip Magic.DRC --skip KLayout.DRC
 SKY130_DRC_SKIPS  := --skip Magic.DRC --skip KLayout.DRC
 endif
 
-.PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-ihp sim-sky130 sim-gf180 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 lint lint-ihp lint-sky130 lint-gf180 lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128
-.PHONY: harden-sky130-all harden-sky130-qfn32 harden-sky130-qfn64 harden-sky130-qfn88 harden-sky130-qfn128
+ifneq ($(filter 1 true TRUE yes YES,$(SKIP_MAGIC_SPICE)),)
+ICS55_MAGIC_SPICE_SKIP := --skip Magic.SpiceExtraction
+endif
+
+ifneq ($(filter 1 true TRUE yes YES,$(SKIP_NETGEN_LVS)),)
+ICS55_NETGEN_LVS_SKIP := --skip Netgen.LVS
+endif
+
+.PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-compile-ics55 sim-ihp sim-sky130 sim-gf180 sim-ics55 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 check-pdk-ics55 lint lint-ihp lint-sky130 lint-gf180 lint-ics55 lint-ics55-no-pll lint-ics55-pll lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128
+.PHONY: harden-sky130-all harden-sky130-qfn32 harden-sky130-qfn64 harden-sky130-qfn88 harden-sky130-qfn128 harden-ics55-no-pll-all harden-ics55-pll-all harden-ics55-qfn32-no-pll harden-ics55-qfn64-no-pll harden-ics55-qfn88-no-pll harden-ics55-qfn128-no-pll harden-ics55-qfn32-pll harden-ics55-qfn64-pll harden-ics55-qfn88-pll harden-ics55-qfn128-pll
 
 help:
 	@echo "Usage: make <target> [PDK root override]"
@@ -76,7 +97,14 @@ help:
 	@echo "  harden-gf180-qfn88"
 	@echo "  harden-gf180-qfn128"
 	@echo "  harden-gf180-all      Run all GF180 hardening targets sequentially"
+	@echo "  lint-ics55-no-pll     Compile ICS55 commercial-PB4 no-PLL package tops"
+	@echo "  lint-ics55-pll        Compile ICS55 commercial-PB4 PLL package tops"
+	@echo "  check-pdk-ics55       Verify the external ICS55 manual PDK and OpenROAD views"
+	@echo "  harden-ics55-qfn32-no-pll / harden-ics55-qfn32-pll"
+	@echo "  harden-ics55-no-pll-all / harden-ics55-pll-all"
 	@echo "  SKIP_DRC=1            Skip Magic and KLayout DRC only (off by default)"
+	@echo "  SKIP_MAGIC_SPICE=1    Skip ICS55 Magic Spice extraction only (non-signoff; off by default)"
+	@echo "  SKIP_NETGEN_LVS=1     Skip ICS55 Netgen LVS only (non-signoff; off by default)"
 	@echo "  SKY130_DRT_OPT_ITERS=64  Sky130 detailed-routing iterations (set 0 for a fast reference run)"
 
 generate:
@@ -103,7 +131,7 @@ rtl-format:
 rtl-format-check:
 	$(PYTHON) scripts/check_format.py --root . --kind rtl --verible-verilog-format $(VERIBLE_FORMAT)
 
-sim-compile: sim-compile-ihp sim-compile-sky130 sim-compile-gf180
+sim-compile: sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-compile-ics55
 
 sim-compile-ihp:
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_tb $(CI_IHP_IO_MODEL) $(IHP_RTL) tb/tenon_tier0_tb.sv
@@ -114,7 +142,11 @@ sim-compile-sky130:
 sim-compile-gf180:
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_tb -DTENON_TIER0_DUT=tenon_tier0_padframe_gf180 $(CI_GF180_IO_MODEL) $(GF180_RTL) tb/tenon_tier0_tb.sv
 
-sim: sim-ihp sim-sky130 sim-gf180
+sim-compile-ics55:
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_tb -DTENON_TIER0_DUT=tenon_tier0_padframe_ics55_no_pll $(CI_ICS55_IO_MODEL) $(ICS55_RTL) tb/tenon_tier0_tb.sv
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_pll_tb $(CI_ICS55_IO_MODEL) $(ICS55_RTL) tb/tenon_tier0_ics55_pll_tb.sv
+
+sim: sim-ihp sim-sky130 sim-gf180 sim-ics55
 
 sim-ihp:
 	@mkdir -p $(BUILD_DIR)/sim
@@ -130,6 +162,13 @@ sim-gf180:
 	@mkdir -p $(BUILD_DIR)/sim
 	$(IVERILOG) -g2012 -s tenon_tier0_tb -DTENON_TIER0_DUT=tenon_tier0_padframe_gf180 -o $(BUILD_DIR)/sim/gf180.vvp $(CI_GF180_IO_MODEL) $(GF180_RTL) tb/tenon_tier0_tb.sv
 	$(VVP) $(BUILD_DIR)/sim/gf180.vvp
+
+sim-ics55:
+	@mkdir -p $(BUILD_DIR)/sim
+	$(IVERILOG) -g2012 -s tenon_tier0_tb -DTENON_TIER0_DUT=tenon_tier0_padframe_ics55_no_pll -o $(BUILD_DIR)/sim/ics55-no-pll.vvp $(CI_ICS55_IO_MODEL) $(ICS55_RTL) tb/tenon_tier0_tb.sv
+	$(VVP) $(BUILD_DIR)/sim/ics55-no-pll.vvp
+	$(IVERILOG) -g2012 -s tenon_tier0_ics55_pll_tb -o $(BUILD_DIR)/sim/ics55-pll.vvp $(CI_ICS55_IO_MODEL) $(ICS55_RTL) tb/tenon_tier0_ics55_pll_tb.sv
+	$(VVP) $(BUILD_DIR)/sim/ics55-pll.vvp
 
 check-pdk: check-pdk-ihp
 
@@ -148,6 +187,14 @@ check-pdk-gf180:
 	@test -n "$(GF180_PDK_ROOT)" || (echo "GF180_PDK_ROOT must point to an installed GF180 PDK root" && exit 2)
 	@test -d "$(GF180_PDK_ROOT)/$(GF180_PDK)" || (echo "Missing $(GF180_PDK_ROOT)/$(GF180_PDK)" && exit 2)
 	@test -f "$(GF180_IO_MODEL)" || (echo "Missing $(GF180_IO_MODEL); set GF180_IO_MODEL if your PDK packages the IO model elsewhere" && exit 2)
+
+check-pdk-ics55:
+	@test -d "$(ICS55_PDK_ROOT)/$(ICS55_PDK)" || (echo "Missing $(ICS55_PDK_ROOT)/$(ICS55_PDK)" && exit 2)
+	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.tech/librelane/config.tcl" || (echo "Missing ICS55 LibreLane adapter" && exit 2)
+	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.ref/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_M2.lef" || (echo "Missing ICS55 H7CR LEF" && exit 2)
+	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.ref/ics55_io_3p3/lef/SP55NLLD2P_3P3V_V0p4a_6MT_1TM.lef" || (echo "Missing ICS55 SP55 LEF" && exit 2)
+	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.ref/ics55_pll/lef/PLL_TOP.lef" || (echo "Missing ICS55 PLL LEF" && exit 2)
+	ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" $(OPENROAD) -no_init -exit scripts/check_ics55_pdk.tcl
 
 lint: lint-ihp
 
@@ -178,6 +225,20 @@ lint-gf180: check-pdk-gf180
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_gf180_qfn128 $(GF180_IO_MODEL) $(GF180_RTL)
 
 test: check-pdk-ihp
+lint-ics55: lint-ics55-no-pll lint-ics55-pll
+
+lint-ics55-no-pll: check-pdk-ics55
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn32_no_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn64_no_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn88_no_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn128_no_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
+
+lint-ics55-pll: check-pdk-ics55
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn32_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn64_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn88_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
+	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn128_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
+
 	@mkdir -p $(BUILD_DIR)/tests
 	$(IVERILOG) -g2012 -s tenon_tier0_tb -o $(BUILD_DIR)/tests/tenon_tier0_tb.vvp $(IHP_IO_MODEL) $(IHP_RTL) tb/tenon_tier0_tb.sv
 	$(VVP) $(BUILD_DIR)/tests/tenon_tier0_tb.vvp
@@ -235,3 +296,29 @@ harden-gf180-all:
 	$(MAKE) harden-gf180-qfn64 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-gf180-qfn88 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-gf180-qfn128 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+
+define ICS55_HARDEN_RULE
+harden-ics55-qfn$(1)-$(2): generate check-pdk-ics55
+	DRT_THREADS=$(ICS55_DRT_THREADS) $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(ICS55_PAD) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --run-tag tenon-qfn$(1)-$(2) --overwrite $(ICS55_FLOW_DIR)/qfn$(1)-$(2).yaml
+endef
+
+$(eval $(call ICS55_HARDEN_RULE,32,no-pll))
+$(eval $(call ICS55_HARDEN_RULE,64,no-pll))
+$(eval $(call ICS55_HARDEN_RULE,88,no-pll))
+$(eval $(call ICS55_HARDEN_RULE,128,no-pll))
+$(eval $(call ICS55_HARDEN_RULE,32,pll))
+$(eval $(call ICS55_HARDEN_RULE,64,pll))
+$(eval $(call ICS55_HARDEN_RULE,88,pll))
+$(eval $(call ICS55_HARDEN_RULE,128,pll))
+
+harden-ics55-no-pll-all:
+	$(MAKE) harden-ics55-qfn32-no-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-ics55-qfn64-no-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-ics55-qfn88-no-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-ics55-qfn128-no-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+
+harden-ics55-pll-all:
+	$(MAKE) harden-ics55-qfn32-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-ics55-qfn64-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-ics55-qfn88-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+	$(MAKE) harden-ics55-qfn128-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"

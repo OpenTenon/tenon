@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-properties>
+ <properties>
+  <frame-color>#6d28d9</frame-color><fill-color>#6d28d9</fill-color><dither-pattern>I2</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>false</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>MET1</name><source>MET1 81/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#0891b2</frame-color><fill-color>#0891b2</fill-color><dither-pattern>I2</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>false</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>MET2</name><source>MET2 82/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#16a34a</frame-color><fill-color>#16a34a</fill-color><dither-pattern>I2</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>false</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>MET3</name><source>MET3 83/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#ca8a04</frame-color><fill-color>#ca8a04</fill-color><dither-pattern>I2</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>false</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>MET4</name><source>MET4 84/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#dc2626</frame-color><fill-color>#dc2626</fill-color><dither-pattern>I2</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>false</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>MET5</name><source>MET5 85/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#475569</frame-color><fill-color>#475569</fill-color><dither-pattern>I5</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>true</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>VIA1</name><source>VIA1 91/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#475569</frame-color><fill-color>#475569</fill-color><dither-pattern>I5</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>true</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>VIA2</name><source>VIA2 92/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#475569</frame-color><fill-color>#475569</fill-color><dither-pattern>I5</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>true</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>VIA3</name><source>VIA3 93/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#475569</frame-color><fill-color>#475569</fill-color><dither-pattern>I5</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>true</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>VIA4</name><source>VIA4 94/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#ea580c</frame-color><fill-color>#ea580c</fill-color><dither-pattern>I2</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>false</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>T4M2</name><source>T4M2 103/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#334155</frame-color><fill-color>#334155</fill-color><dither-pattern>I5</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>true</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>T4V1</name><source>T4V1 112/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#334155</frame-color><fill-color>#334155</fill-color><dither-pattern>I5</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>true</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>T4V2</name><source>T4V2 113/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#be123c</frame-color><fill-color>#be123c</fill-color><dither-pattern>I2</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>false</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>RV</name><source>RV 122/1@1</source>
+ </properties>
+ <properties>
+  <frame-color>#7e22ce</frame-color><fill-color>#7e22ce</fill-color><dither-pattern>I2</dither-pattern>
+  <valid>true</valid><visible>true</visible><transparent>false</transparent><width>1</width><marked>false</marked><xfill>false</xfill><animation>0</animation><name>RDL</name><source>RDL 123/1@1</source>
+ </properties>
+</layer-properties>

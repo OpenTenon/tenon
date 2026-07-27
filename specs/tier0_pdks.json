@@ -57,6 +57,59 @@
         "core_offset_um": 442
       },
       "physical_flow_status": "GF180 OCD reference flow generated from audited PDK geometry"
+    },
+    {
+      "id": "ics55",
+      "padframe_module": "tenon_tier0_padframe_ics55_no_pll",
+      "reference_module": "tenon_tier0_reference_ics55_no_pll",
+      "package_top_prefix": "tenon_tier0_ics55_",
+      "physical_flow": "flow/ics55/qfn*-{no-pll,pll}.yaml",
+      "io_library": "SP55NLLD2P_3P3V_V0p4a_6MT_1TM",
+      "standard_cell_library": "ics55_LLSC_H7CR",
+      "pad_library": "ics55_io_3p3",
+      "reference_pdk_tag": "CX55-commercial-views-with-N551P6M_ecos-techlef",
+      "rail_mapping": {
+        "VDD": "VDD",
+        "VSS": "VSS",
+        "IOVDD": "VDD25",
+        "IOVSS": "VSSD"
+      },
+      "floorplan": {
+        "pad_pitch_um": 40,
+        "pad_width_um": 30,
+        "pad_height_um": 228,
+        "filler_cell": "PFILL10",
+        "filler_width_um": 10,
+        "corner_cell": "PCORNER",
+        "corner_size_um": 228,
+        "core_offset_um": 365,
+        "pll_halo_um": 20,
+        "pll_width_um": 200,
+        "pll_height_um": 120
+      },
+      "variants": [
+        {
+          "id": "no-pll",
+          "top_suffix": "no_pll",
+          "padframe_module": "tenon_tier0_padframe_ics55_no_pll",
+          "reference_module": "tenon_tier0_reference_ics55_no_pll",
+          "include_pll": false
+        },
+        {
+          "id": "pll",
+          "top_suffix": "pll",
+          "padframe_module": "tenon_tier0_padframe_ics55_pll",
+          "reference_module": "tenon_tier0_reference_ics55_pll",
+          "include_pll": true,
+          "gpio_reservations": {
+            "east": ["PLL_AVSS", "PLL_AVDD"],
+            "north": ["XIN", "XOUT", "AVSSIO", "AVDDIO"]
+          }
+        }
+      ],
+      "detailed_routing_threads": 16,
+      "detailed_routing_optimization_iterations": 1,
+      "physical_flow_status": "External manual PDK adapter using commercial PB4, physical package-pad overlays, and optional PLL_TOP"
     }
   ]
 }

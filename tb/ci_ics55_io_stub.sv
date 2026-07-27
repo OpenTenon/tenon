@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: Apache-2.0
+// Behavioral commercial-ICS55 stand-ins used only by CI simulation.
+
+`default_nettype none
+
+module PB4 (
+    inout wire VSSD, inout wire VSS, inout wire PAD, input wire OEN,
+    output wire C, input wire IE, input wire I, inout wire VDD25,
+    inout wire VDD, inout wire FP, inout wire FPB
+);
+  assign PAD = OEN ? 1'bz : I;
+  assign C = IE ? PAD : 1'b0;
+endmodule
+
+module PVDD1 (inout wire VDD25, inout wire VSS, inout wire VDD, inout wire VSSD, inout wire FP, inout wire FPB); endmodule
+module PVSS1 (inout wire VSSD, inout wire VSS, inout wire VDD25, inout wire VDD, inout wire FPB, inout wire FP); endmodule
+module PVDD2 (inout wire VDD25, inout wire VDD, inout wire FP, inout wire FPB, inout wire VSS, inout wire VSSD); endmodule
+module PVSS2 (inout wire VDD25, inout wire FP, inout wire FPB, inout wire VDD, inout wire VSSD, inout wire VSS); endmodule
+module PVDD1CAP (inout wire SVDD1CAP); endmodule
+module PVSS1CAP (inout wire SVSS1CAP); endmodule
+module PVDD3AP (inout wire SAVDD); endmodule
+module PVSS3AP (inout wire SAVSS); endmodule
+module PADI30 (); endmodule
+module PADO30 (); endmodule
+module PFILL10 (); endmodule
+module PCORNER (); endmodule
+
+module PXWE1 (
+    inout wire VSSD, inout wire VSS, inout wire VDD25, inout wire VDD,
+    inout wire FP, inout wire FPB, inout wire XIN, input wire E,
+    output wire XC, inout wire XOUT
+);
+  assign XC = E ? XIN : 1'b0;
+  assign XOUT = 1'bz;
+endmodule
+
+module PLL_TOP (
+    input wire BP, output wire CKOUT1, output wire CKOUT2, output wire CKTST,
+    input wire EN, input wire [7:0] N, input wire [1:0] OD,
+    input wire REFCLK, input wire SELECT, inout wire AVDD, inout wire AVSS,
+    inout wire DVDD, inout wire DVDD_DRV, inout wire DVSS, inout wire DVSS_DRV
+);
+  assign CKOUT1 = EN && !BP ? REFCLK : 1'b0;
+  assign CKOUT2 = EN && !BP ? REFCLK : 1'b0;
+  assign CKTST = SELECT ? REFCLK : 1'b0;
+endmodule
+
+`default_nettype wire
