@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // CI checks for the ICS55 PB4 padframe with the optional commercial PLL macro.
 
-`timescale 1ns / 1ps `default_nettype none
+`timescale 1ns / 1ps
+// Keep a directive boundary: Icarus 11 parses a following directive on this
+// line as part of `timescale.
+`default_nettype none
 
 module tenon_tier0_ics55_pll_tb;
   wire       mgmt_clk_pad;
