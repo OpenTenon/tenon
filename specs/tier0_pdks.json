@@ -90,7 +90,7 @@
       "no_pll_floorplan_overrides": {
         "qfn32": {
           "die_side_um": 960,
-          "core_offset_um": 330
+          "core_offset_um": 252
         }
       },
       "variants": [
