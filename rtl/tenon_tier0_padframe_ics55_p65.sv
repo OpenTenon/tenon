@@ -35,18 +35,30 @@ module tenon_ics55_p65_pbmux (
 endmodule
 
 module tenon_ics55_p65_vdd3 (
-    inout wire vdd
+    inout wire vdd,
+    inout wire vss,
+    inout wire vddio,
+    inout wire vssio
 );
-  (* keep = "true" *) P65_1233_VDD3 u_pad (.VDD(vdd));
+  (* keep = "true" *) P65_1233_VDD3 u_pad (
+      .VDD  (vdd),
+      .VSS  (vss),
+      .VDDIO(vddio),
+      .VSSIO(vssio)
+  );
 endmodule
 
 module tenon_ics55_p65_vss3 (
     inout wire vdd,
-    inout wire vss
+    inout wire vss,
+    inout wire vddio,
+    inout wire vssio
 );
   (* keep = "true" *) P65_1233_VSS3 u_pad (
-      .VDD(vdd),
-      .VSS(vss)
+      .VDD  (vdd),
+      .VSS  (vss),
+      .VDDIO(vddio),
+      .VSSIO(vssio)
   );
 endmodule
 
@@ -56,13 +68,9 @@ module tenon_ics55_p65_vddio3 (
   (* keep = "true" *) P65_1233_VDDIO3 u_pad (.VDDIO(vddio));
 endmodule
 module tenon_ics55_p65_vssio3 (
-    inout wire vddio,
     inout wire vssio
 );
-  (* keep = "true" *) P65_1233_VSSIO3 u_pad (
-      .VDDIO(vddio),
-      .VSSIO(vssio)
-  );
+  (* keep = "true" *) P65_1233_VSSIO3 u_pad (.VSSIO(vssio));
 endmodule
 
 module tenon_tier0_padframe_ics55_no_pll #(
@@ -162,18 +170,22 @@ module tenon_tier0_padframe_ics55_no_pll #(
       tenon_ics55_p65_vddio3 u_cell (.vddio(iovdd));
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_iovss_pads
-      tenon_ics55_p65_vssio3 u_cell (
+      tenon_ics55_p65_vssio3 u_cell (.vssio(iovss));
+    end
+    for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vdd_pads
+      tenon_ics55_p65_vdd3 u_cell (
+          .vdd  (vdd),
+          .vss  (vss),
           .vddio(iovdd),
           .vssio(iovss)
       );
     end
-    for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vdd_pads
-      tenon_ics55_p65_vdd3 u_cell (.vdd(vdd));
-    end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vss_pads
       tenon_ics55_p65_vss3 u_cell (
-          .vdd(vdd),
-          .vss(vss)
+          .vdd  (vdd),
+          .vss  (vss),
+          .vddio(iovdd),
+          .vssio(iovss)
       );
     end
   endgenerate

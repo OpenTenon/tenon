@@ -76,6 +76,30 @@ module TOP ( \
   ); \
 endmodule
 
+`define TENON_ICS55_PB4_NO_PLL_VARIANT(TOP, WIDTH, RAIL_COUNT) \
+module TOP ( \
+    inout wire iovdd, \
+    inout wire iovss, \
+    inout wire vdd, \
+    inout wire vss, \
+    inout wire mgmt_clk_pad, \
+    inout wire mgmt_rst_n_pad, \
+    inout wire jtag_tck_pad, \
+    inout wire jtag_tms_pad, \
+    inout wire jtag_tdi_pad, \
+    inout wire jtag_tdo_pad, \
+    inout wire uart_rx_pad, \
+    inout wire uart_tx_pad, \
+    inout wire [(WIDTH)-1:0] gpio_pad \
+); \
+  tenon_tier0_reference_ics55_pb4_no_pll #( \
+      .GPIO_COUNT(WIDTH), \
+      .PADS_PER_RAIL(RAIL_COUNT) \
+  ) u_reference ( \
+      .* \
+  ); \
+endmodule
+
 `define TENON_ICS55_PLL_VARIANT(TOP, WIDTH, RAIL_COUNT) \
 module TOP ( \
     inout wire iovdd, \
@@ -117,7 +141,7 @@ endmodule
 `TENON_GF180_VARIANT(tenon_tier0_gf180_qfn88, 56, 6)
 `TENON_GF180_VARIANT(tenon_tier0_gf180_qfn128, 88, 8)
 
-`TENON_ICS55_NO_PLL_VARIANT(tenon_tier0_ics55_qfn32_no_pll, 16, 2)
+`TENON_ICS55_PB4_NO_PLL_VARIANT(tenon_tier0_ics55_qfn32_no_pll, 16, 2)
 `TENON_ICS55_NO_PLL_VARIANT(tenon_tier0_ics55_qfn64_no_pll, 40, 4)
 `TENON_ICS55_NO_PLL_VARIANT(tenon_tier0_ics55_qfn88_no_pll, 56, 6)
 `TENON_ICS55_NO_PLL_VARIANT(tenon_tier0_ics55_qfn128_no_pll, 88, 8)
@@ -130,6 +154,7 @@ endmodule
 `undef TENON_SKY130_VARIANT
 `undef TENON_GF180_VARIANT
 `undef TENON_ICS55_NO_PLL_VARIANT
+`undef TENON_ICS55_PB4_NO_PLL_VARIANT
 `undef TENON_ICS55_PLL_VARIANT
 
 `default_nettype wire

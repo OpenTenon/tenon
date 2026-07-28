@@ -155,12 +155,17 @@ module P65_1233_PBMUX (
   assign C   = IE ? PAD : I;
 endmodule
 module P65_1233_VDD3 (
-    inout wire VDD
+    inout wire VDD,
+    inout wire VDDIO,
+    inout wire VSS,
+    inout wire VSSIO
 );
 endmodule
 module P65_1233_VSS3 (
+    inout wire VSS,
     inout wire VDD,
-    VSS
+    inout wire VDDIO,
+    inout wire VSSIO
 );
 endmodule
 module P65_1233_VDDIO3 (
@@ -168,8 +173,7 @@ module P65_1233_VDDIO3 (
 );
 endmodule
 module P65_1233_VSSIO3 (
-    inout wire VDDIO,
-    VSSIO
+    inout wire VSSIO
 );
 endmodule
 module P65_1233_CORNER (

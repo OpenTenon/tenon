@@ -169,15 +169,20 @@ module P65_1233_PBMUX (
   input IE, CS, I, OE, OD, PU, PD, DS0, DS1;
 endmodule
 module P65_1233_VDD3 (
-    VDD
+    VDD,
+    VDDIO,
+    VSS,
+    VSSIO
 );
-  inout VDD;
+  inout VDD, VDDIO, VSS, VSSIO;
 endmodule
 module P65_1233_VSS3 (
+    VSS,
     VDD,
-    VSS
+    VDDIO,
+    VSSIO
 );
-  inout VDD, VSS;
+  inout VSS, VDD, VDDIO, VSSIO;
 endmodule
 module P65_1233_VDDIO3 (
     VDDIO
@@ -185,10 +190,9 @@ module P65_1233_VDDIO3 (
   inout VDDIO;
 endmodule
 module P65_1233_VSSIO3 (
-    VDDIO,
     VSSIO
 );
-  inout VDDIO, VSSIO;
+  inout VSSIO;
 endmodule
 module P65_1233_CORNER (
     VDD,

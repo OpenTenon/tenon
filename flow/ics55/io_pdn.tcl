@@ -122,8 +122,10 @@ proc tenon_ics55_build_io_ring {block tech net_name margin_um} {
     }
 }
 
-set tenon_ics55_io_block [ord::get_db_block]
-set tenon_ics55_io_tech [[ord::get_db] getTech]
-tenon_ics55_build_io_ring $tenon_ics55_io_block $tenon_ics55_io_tech iovdd $::tenon_ics55_iovdd_ring_offset_um
-tenon_ics55_build_io_ring $tenon_ics55_io_block $tenon_ics55_io_tech iovss $::tenon_ics55_iovss_ring_offset_um
 
+if {![info exists ::env(TENON_ICS55_SKIP_IO_PDN)]} {
+    set tenon_ics55_io_block [ord::get_db_block]
+    set tenon_ics55_io_tech [[ord::get_db] getTech]
+    tenon_ics55_build_io_ring $tenon_ics55_io_block $tenon_ics55_io_tech iovdd $::tenon_ics55_iovdd_ring_offset_um
+    tenon_ics55_build_io_ring $tenon_ics55_io_block $tenon_ics55_io_tech iovss $::tenon_ics55_iovss_ring_offset_um
+}

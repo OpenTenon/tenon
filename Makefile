@@ -11,11 +11,12 @@ PDK_ROOT         ?= $(IHP_CIEL_ROOT)
 SKIP_DRC         ?= 0
 SKIP_MAGIC_SPICE ?= 0
 SKIP_NETGEN_LVS  ?= 0
+UNSIGNED_IO_PG   ?= 0
 
 IHP_RTL    := rtl/tenon_tier0_padframe.sv rtl/tenon_tier0_reference.sv rtl/tenon_tier0_variants.sv
 SKY130_RTL := rtl/tenon_tier0_padframe_sky130.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 GF180_RTL  := rtl/tenon_tier0_padframe_gf180.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
-ICS55_RTL  := rtl/tenon_tier0_padframe_ics55.sv rtl/tenon_tier0_padframe_ics55_p65.sv rtl/tenon_tier0_padframe_ics55_p65_fillers.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
+ICS55_RTL  := rtl/tenon_tier0_padframe_ics55.sv rtl/tenon_tier0_padframe_ics55_p65.sv rtl/tenon_tier0_padframe_ics55_p65_fillers.sv rtl/tenon_tier0_padframe_ics55_qfn32_no_pll_fillers.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 
 IHP_IO_MODEL         ?= $(PDK_ROOT)/$(PDK)/libs.ref/sg13g2_io/verilog/sg13g2_io.v
 SKY130_PDK           ?= sky130A
@@ -68,7 +69,7 @@ ICS55_NETGEN_LVS_SKIP := --skip Netgen.LVS
 endif
 
 .PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-compile-ics55 sim-ihp sim-sky130 sim-gf180 sim-ics55 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 check-pdk-ics55 lint lint-ihp lint-sky130 lint-gf180 lint-ics55 lint-ics55-no-pll lint-ics55-pll lint-smoke smoke-run smoke-report lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128
-.PHONY: harden-sky130-all harden-sky130-qfn32 harden-sky130-qfn64 harden-sky130-qfn88 harden-sky130-qfn128 harden-ics55-no-pll-all harden-ics55-pll-all harden-ics55-qfn32-no-pll harden-ics55-qfn64-no-pll harden-ics55-qfn88-no-pll harden-ics55-qfn128-no-pll harden-ics55-qfn32-pll harden-ics55-qfn64-pll harden-ics55-qfn88-pll harden-ics55-qfn128-pll
+.PHONY: harden-sky130-all harden-sky130-qfn32 harden-sky130-qfn64 harden-sky130-qfn88 harden-sky130-qfn128 harden-ics55-no-pll-all harden-ics55-pll-all harden-ics55-qfn32-no-pll harden-ics55-qfn64-no-pll harden-ics55-qfn88-no-pll harden-ics55-qfn128-no-pll harden-ics55-qfn32-pll harden-ics55-qfn64-pll harden-ics55-qfn88-pll harden-ics55-qfn128-pll harden-ics55-qfn32-no-pll-unsigned-io-pg
 
 help:
 	@echo "Usage: make <target> [PDK root override]"
@@ -99,17 +100,19 @@ help:
 	@echo "  harden-gf180-qfn88"
 	@echo "  harden-gf180-qfn128"
 	@echo "  harden-gf180-all      Run all GF180 hardening targets sequentially"
-	@echo "  lint-ics55-no-pll     Compile ICS55 commercial-P65 no-PLL package tops"
+	@echo "  lint-ics55-no-pll     Compile ICS55 QFN32 SP55/PB4 and QFN64+ P65 no-PLL package tops"
 	@echo "  lint-ics55-pll        Compile ICS55 legacy-PB4 PLL package tops"
 	@echo "  lint-smoke            Compile all standalone ICS55 smoke RTL examples"
 	@echo "  smoke-run             Run all non-signoff ICS55 smoke LibreLane flows"
 	@echo "  smoke-report          Regenerate smoke/REPORTS.md from final metrics"
 	@echo "  check-pdk-ics55       Verify the external ICS55 manual PDK and OpenROAD views"
 	@echo "  harden-ics55-qfn32-no-pll / harden-ics55-qfn32-pll"
+	@echo "  harden-ics55-qfn32-no-pll-unsigned-io-pg  Explicit non-signoff QFN32 SP55 IO-PG continuation"
 	@echo "  harden-ics55-no-pll-all / harden-ics55-pll-all"
 	@echo "  SKIP_DRC=1            Skip Magic and KLayout DRC only (off by default)"
 	@echo "  SKIP_MAGIC_SPICE=1    Skip ICS55 Magic Spice extraction only (non-signoff; off by default)"
 	@echo "  SKIP_NETGEN_LVS=1     Skip ICS55 Netgen LVS only (non-signoff; off by default)"
+	@echo "  UNSIGNED_IO_PG=1      Required by the explicit QFN32 SP55 IO-PG continuation target"
 	@echo "  SKY130_DRT_OPT_ITERS=64  Sky130 detailed-routing iterations (set 0 for a fast reference run)"
 
 generate:
@@ -312,9 +315,13 @@ harden-gf180-all:
 	$(MAKE) harden-gf180-qfn88 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-gf180-qfn128 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 
+define ICS55_PAD_FOR_PROFILE
+$(if $(and $(filter 32,$(1)),$(filter no-pll,$(2))),$(ICS55_LEGACY_PAD),$(if $(filter no-pll,$(2)),$(ICS55_P65_PAD),$(ICS55_LEGACY_PAD)))
+endef
+
 define ICS55_HARDEN_RULE
 harden-ics55-qfn$(1)-$(2): generate check-pdk-ics55
-	DRT_THREADS=$(ICS55_DRT_THREADS) $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(if $(filter no-pll,$(2)),$(ICS55_P65_PAD),$(ICS55_LEGACY_PAD)) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --run-tag tenon-qfn$(1)-$(2) --overwrite $(ICS55_FLOW_DIR)/qfn$(1)-$(2).yaml
+	DRT_THREADS=$(ICS55_DRT_THREADS) $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(call ICS55_PAD_FOR_PROFILE,$(1),$(2)) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --run-tag tenon-qfn$(1)-$(2) --overwrite $(ICS55_FLOW_DIR)/qfn$(1)-$(2).yaml
 endef
 
 $(eval $(call ICS55_HARDEN_RULE,32,no-pll))
@@ -325,6 +332,16 @@ $(eval $(call ICS55_HARDEN_RULE,32,pll))
 $(eval $(call ICS55_HARDEN_RULE,64,pll))
 $(eval $(call ICS55_HARDEN_RULE,88,pll))
 $(eval $(call ICS55_HARDEN_RULE,128,pll))
+
+# The SP55 LEF has no package-level VDD25/VSSD or RDL supply geometry. Keep PSM
+# in this explicitly named target, but retain its report as non-fatal only after
+# an operator explicitly acknowledges that the output is not a signoff result.
+harden-ics55-qfn32-no-pll-unsigned-io-pg: generate check-pdk-ics55
+	@test "$(UNSIGNED_IO_PG)" = "1" || { echo "Set UNSIGNED_IO_PG=1 to run this non-signoff target."; exit 2; }
+	@echo "WARNING: retaining non-fatal PSM violations; result is not signed off."
+# OpenROAD.IRDropReport repeats PSM without a non-fatal control, so this target
+# omits only that reanalysis after the PowerGrid checker has captured violations.
+	DRT_THREADS=$(ICS55_DRT_THREADS) $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(ICS55_LEGACY_PAD) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --override-config ERROR_ON_PDN_VIOLATIONS=false --skip OpenROAD.IRDropReport --run-tag tenon-qfn32-no-pll-unsigned-io-pg --overwrite $(ICS55_FLOW_DIR)/qfn32-no-pll.yaml
 
 harden-ics55-no-pll-all:
 	$(MAKE) harden-ics55-qfn32-no-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"

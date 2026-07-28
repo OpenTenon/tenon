@@ -112,6 +112,18 @@
             "VSS": "VSS",
             "IOVDD": "VDDIO",
             "IOVSS": "VSSIO"
+          },
+          "profile_overrides": {
+            "qfn32": {
+              "io_family": "pb4",
+              "pdn_mode": "commercial-pad-row",
+              "physical_rail_mapping": {
+                "VDD": "VDD",
+                "VSS": "VSS",
+                "IOVDD": "VDD25",
+                "IOVSS": "VSSD"
+              }
+            }
           }
         },
         {
@@ -143,7 +155,7 @@
       ],
       "detailed_routing_threads": 16,
       "detailed_routing_optimization_iterations": 1,
-      "physical_flow_status": "P65/ICSIOA no-PLL reference flow with native supply ports; PB4 PLL flow retained as legacy pending a qualified P65 1.2 V PLL supply pad",
+      "physical_flow_status": "QFN32 no-PLL uses the commercial SP55/PB4 pad row with VDD25/VSSD mapped to logical IOVDD/IOVSS; its incomplete package-supply LEF abstracts require an explicitly named non-signoff PSM-continuation target. QFN64/QFN88/QFN128 no-PLL retain the P65/ICSIOA flow with native supply ports; PB4 PLL remains pending a qualified P65 1.2 V PLL supply pad.",
       "p65_no_pll_floorplan": {
         "pad_width_um": 65,
         "pad_height_um": 130,

@@ -256,10 +256,10 @@ P65_FILLER_MACROS = (
 P65_PBMUX_SIGNAL_PINS = ("C", "CS", "DS0", "DS1", "I", "IE", "OD", "OE", "PD", "PU")
 P65_PG_MACROS = {
     "P65_1233_PBMUX": P65_SUPPLY_PINS,
-    "P65_1233_VDD3": ("VDD",),
-    "P65_1233_VSS3": ("VDD", "VSS"),
+    "P65_1233_VDD3": P65_SUPPLY_PINS,
+    "P65_1233_VSS3": P65_SUPPLY_PINS,
     "P65_1233_VDDIO3": ("VDDIO",),
-    "P65_1233_VSSIO3": ("VDDIO", "VSSIO"),
+    "P65_1233_VSSIO3": ("VSSIO",),
     "P65_1233_CORNER": P65_SUPPLY_PINS,
     **{macro: P65_SUPPLY_PINS for macro in P65_FILLER_MACROS},
 }
@@ -328,8 +328,39 @@ def simplify_pin_port_to_first_rect(block: str, macro: str, pin: str, layer_name
     return block[: match.start()] + match.group(1) + body + port + match.group(3) + block[match.end() :]
 
 
+
+def simplify_supply_pin_port_to_row_rails(block: str, macro: str, pin: str) -> str:
+    """Retain actual MET5 rails which abut the neighboring P65 pad cell."""
+    size = re.search(r"(?m)^  SIZE\s+(\S+)\s+BY\s+(\S+)\s*;", block)
+    if size is None:
+        raise ValueError(f"{macro} has no SIZE")
+    width = float(size.group(1))
+    pattern = re.compile(
+        rf"(?ms)^(  PIN\s+{re.escape(pin)}\s*\n)(.*?)(^  END\s+{re.escape(pin)}\s*$)"
+    )
+    match = pattern.search(block)
+    if match is None:
+        raise ValueError(f"{macro} has no {pin} pin")
+    rectangles = []
+    for port in re.findall(r"(?ms)^    PORT\s*\n(.*?)^    END\s*$", match.group(2)):
+        layer = re.search(
+            r"(?ms)^      LAYER\s+MET5\s*;\s*\n(.*?)(?=^      LAYER\s+|\Z)",
+            port,
+        )
+        if layer is None:
+            continue
+        for values in re.findall(r"(?m)^        RECT\s+([^;]+);\s*$", layer.group(1)):
+            x0, _, x1, _ = (float(value) for value in values.split())
+            if abs(x0) < 1e-6 and abs(x1 - width) < 1e-6:
+                rectangles.append(values)
+    if not rectangles:
+        raise ValueError(f"{macro}/{pin} has no MET5 pad-row rail")
+    body = re.sub(r"(?ms)^    PORT\s*\n.*?^    END\s*\n", "", match.group(2))
+    port = "    PORT\n      LAYER MET5 ;\n" + f"        RECT {rectangles[0]};\n" + "    END\n"
+    return block[: match.start()] + match.group(1) + body + port + match.group(3) + block[match.end() :]
+
 def make_p65_openroad_lef(source: Path) -> str:
-    """Retain real P65 power rails and only external PBMUX routing terminals."""
+    """Retain P65 MET5 supply accesses and external PBMUX routing terminals."""
     content = source.read_text()
     for macro, pins in P65_OPENROAD_PIN_FILTER.items():
         content = replace_macro_block(
@@ -356,11 +387,11 @@ def make_p65_openroad_lef(source: Path) -> str:
     for macro, pins in P65_PG_MACROS.items():
         for pin in pins:
             start, end, block = macro_block(content, macro)
-            content = (
-                content[:start]
-                + simplify_pin_port_to_first_rect(block, macro, pin, "MET5")
-                + content[end:]
-            )
+            if macro == "P65_1233_CORNER":
+                abstract = simplify_pin_port_to_first_rect(block, macro, pin, "MET5")
+            else:
+                abstract = simplify_supply_pin_port_to_row_rails(block, macro, pin)
+            content = content[:start] + abstract + content[end:]
         for pin in ("VSS", "VSSIO"):
             if pin not in pins:
                 continue

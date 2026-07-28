@@ -183,6 +183,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
     inout  wire                  iovss,
     inout  wire                  vdd,
     inout  wire                  vss,
+    inout  wire                  fp,
+    inout  wire                  fpb,
     inout  wire                  mgmt_clk_pad,
     inout  wire                  mgmt_rst_n_pad,
     inout  wire                  jtag_tck_pad,
@@ -224,8 +226,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       ) u_cell (
           .VDD25(iovdd),
           .VDD  (vdd),
-          .FP   (iovdd),
-          .FPB  (iovss),
+          .FP   (fp),
+          .FPB  (fpb),
           .VSS  (vss),
           .VSSD (iovss)
       );
@@ -235,8 +237,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
           .USE_PADI(index % 2)
       ) u_cell (
           .VDD25(iovdd),
-          .FP   (iovdd),
-          .FPB  (iovss),
+          .FP   (fp),
+          .FPB  (fpb),
           .VDD  (vdd),
           .VSSD (iovss),
           .VSS  (vss)
@@ -250,8 +252,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
           .VSS  (vss),
           .VDD  (vdd),
           .VSSD (iovss),
-          .FP   (iovdd),
-          .FPB  (iovss)
+          .FP   (fp),
+          .FPB  (fpb)
       );
     end
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_vss_pads
@@ -262,8 +264,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
           .VSS  (vss),
           .VDD25(iovdd),
           .VDD  (vdd),
-          .FPB  (iovss),
-          .FP   (iovdd)
+          .FPB  (fpb),
+          .FP   (fp)
       );
     end
   endgenerate
@@ -279,8 +281,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       .core_to_pad(1'b0),
       .vdd25      (iovdd),
       .vdd        (vdd),
-      .fp         (iovdd),
-      .fpb        (iovss)
+      .fp         (fp),
+      .fpb        (fpb)
   );
   tenon_ics55_pb4 #(
       .USE_PADI(1)
@@ -293,8 +295,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       .core_to_pad(1'b0),
       .vdd25      (iovdd),
       .vdd        (vdd),
-      .fp         (iovdd),
-      .fpb        (iovss)
+      .fp         (fp),
+      .fpb        (fpb)
   );
   tenon_ics55_pb4 #(
       .USE_PADI(0)
@@ -307,8 +309,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       .core_to_pad(1'b0),
       .vdd25      (iovdd),
       .vdd        (vdd),
-      .fp         (iovdd),
-      .fpb        (iovss)
+      .fp         (fp),
+      .fpb        (fpb)
   );
   tenon_ics55_pb4 #(
       .USE_PADI(1)
@@ -321,8 +323,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       .core_to_pad(1'b0),
       .vdd25      (iovdd),
       .vdd        (vdd),
-      .fp         (iovdd),
-      .fpb        (iovss)
+      .fp         (fp),
+      .fpb        (fpb)
   );
   tenon_ics55_pb4 #(
       .USE_PADI(0)
@@ -335,8 +337,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       .core_to_pad(1'b0),
       .vdd25      (iovdd),
       .vdd        (vdd),
-      .fp         (iovdd),
-      .fpb        (iovss)
+      .fp         (fp),
+      .fpb        (fpb)
   );
   tenon_ics55_pb4 #(
       .USE_PADI(1)
@@ -349,8 +351,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       .core_to_pad(jtag_tdo_o),
       .vdd25      (iovdd),
       .vdd        (vdd),
-      .fp         (iovdd),
-      .fpb        (iovss)
+      .fp         (fp),
+      .fpb        (fpb)
   );
   tenon_ics55_pb4 #(
       .USE_PADI(0)
@@ -363,8 +365,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       .core_to_pad(1'b0),
       .vdd25      (iovdd),
       .vdd        (vdd),
-      .fp         (iovdd),
-      .fpb        (iovss)
+      .fp         (fp),
+      .fpb        (fpb)
   );
   tenon_ics55_pb4 #(
       .USE_PADI(1)
@@ -377,8 +379,8 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
       .core_to_pad(uart_tx_o),
       .vdd25      (iovdd),
       .vdd        (vdd),
-      .fp         (iovdd),
-      .fpb        (iovss)
+      .fp         (fp),
+      .fpb        (fpb)
   );
 
   generate
@@ -394,11 +396,57 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
           .core_to_pad(gpio_o[index]),
           .vdd25      (iovdd),
           .vdd        (vdd),
-          .fp         (iovdd),
-          .fpb        (iovss)
+          .fp         (fp),
+          .fpb        (fpb)
       );
     end
   endgenerate
+endmodule
+
+module tenon_tier0_padframe_ics55_pb4_no_pll #(
+    parameter integer GPIO_COUNT    = 16,
+    parameter integer PADS_PER_RAIL = 2
+) (
+    inout  wire                  iovdd,
+    inout  wire                  iovss,
+    inout  wire                  vdd,
+    inout  wire                  vss,
+    inout  wire                  mgmt_clk_pad,
+    inout  wire                  mgmt_rst_n_pad,
+    inout  wire                  jtag_tck_pad,
+    inout  wire                  jtag_tms_pad,
+    inout  wire                  jtag_tdi_pad,
+    inout  wire                  jtag_tdo_pad,
+    inout  wire                  uart_rx_pad,
+    inout  wire                  uart_tx_pad,
+    inout  wire [GPIO_COUNT-1:0] gpio_pad,
+    output wire                  mgmt_clk_i,
+    output wire                  mgmt_rst_ni,
+    output wire                  jtag_tck_i,
+    output wire                  jtag_tms_i,
+    output wire                  jtag_tdi_i,
+    input  wire                  jtag_tdo_o,
+    output wire                  uart_rx_i,
+    input  wire                  uart_tx_o,
+    output wire [GPIO_COUNT-1:0] gpio_i,
+    input  wire [GPIO_COUNT-1:0] gpio_o,
+    input  wire [GPIO_COUNT-1:0] gpio_oe
+);
+  wire fp;
+  wire fpb;
+
+  tenon_tier0_padframe_ics55_pb4_legacy #(
+      .GPIO_COUNT   (GPIO_COUNT),
+      .PADS_PER_RAIL(PADS_PER_RAIL)
+  ) u_base (
+      .iovdd,
+      .iovss,
+      .vdd,
+      .vss,
+      .fp,
+      .fpb,
+      .*
+  );
 endmodule
 
 module tenon_tier0_padframe_ics55_pll #(
@@ -451,6 +499,8 @@ module tenon_tier0_padframe_ics55_pll #(
       .GPIO_COUNT   (GPIO_COUNT),
       .PADS_PER_RAIL(PADS_PER_RAIL)
   ) u_base (
+      .fp (iovdd),
+      .fpb(iovss),
       .*
   );
 
