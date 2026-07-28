@@ -133,4 +133,114 @@ module PLL_TOP (
   assign CKTST  = SELECT ? REFCLK : 1'b0;
 endmodule
 
+
+module P65_1233_PBMUX (
+    output wire C,
+    inout  wire PAD,
+    input  wire IE,
+    input  wire CS,
+    input  wire I,
+    input  wire OE,
+    input  wire OD,
+    input  wire PU,
+    input  wire PD,
+    input  wire DS0,
+    input  wire DS1,
+    inout  wire VDD,
+    inout  wire VDDIO,
+    inout  wire VSS,
+    inout  wire VSSIO
+);
+  assign PAD = OE ? I : 1'bz;
+  assign C   = IE ? PAD : I;
+endmodule
+module P65_1233_VDD3 (
+    inout wire VDD
+);
+endmodule
+module P65_1233_VSS3 (
+    inout wire VDD,
+    VSS
+);
+endmodule
+module P65_1233_VDDIO3 (
+    inout wire VDDIO
+);
+endmodule
+module P65_1233_VSSIO3 (
+    inout wire VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_CORNER (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER50 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER20 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER10 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER5 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER2 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER1 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER01 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER001 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+module P65_1233_FILLER0005 (
+    inout wire VDD,
+    VSS,
+    VDDIO,
+    VSSIO
+);
+endmodule
+
 `default_nettype wire

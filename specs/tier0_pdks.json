@@ -64,15 +64,15 @@
       "reference_module": "tenon_tier0_reference_ics55_no_pll",
       "package_top_prefix": "tenon_tier0_ics55_",
       "physical_flow": "flow/ics55/qfn*-{no-pll,pll}.yaml",
-      "io_library": "SP55NLLD2P_3P3V_V0p4a_6MT_1TM",
+      "io_library": "ICSIOA_N55_3P3_1P6M1TM",
       "standard_cell_library": "ics55_LLSC_H7CR",
-      "pad_library": "ics55_io_3p3",
-      "reference_pdk_tag": "CX55-commercial-views-with-N551P6M_ecos-techlef",
+      "pad_library": "ics55_io_p65",
+      "reference_pdk_tag": "CX55-commercial-P65-ICSIOA-251013-and-PB4-PLL-legacy",
       "rail_mapping": {
         "VDD": "VDD",
         "VSS": "VSS",
-        "IOVDD": "VDD25",
-        "IOVSS": "VSSD"
+        "IOVDD": "VDDIO",
+        "IOVSS": "VSSIO"
       },
       "floorplan": {
         "pad_pitch_um": 40,
@@ -105,7 +105,14 @@
           "top_suffix": "no_pll",
           "padframe_module": "tenon_tier0_padframe_ics55_no_pll",
           "reference_module": "tenon_tier0_reference_ics55_no_pll",
-          "include_pll": false
+          "include_pll": false,
+          "io_family": "p65",
+          "rail_mapping": {
+            "VDD": "VDD",
+            "VSS": "VSS",
+            "IOVDD": "VDDIO",
+            "IOVSS": "VSSIO"
+          }
         },
         {
           "id": "pll",
@@ -114,14 +121,46 @@
           "reference_module": "tenon_tier0_reference_ics55_pll",
           "include_pll": true,
           "gpio_reservations": {
-            "east": ["PLL_AVSS", "PLL_AVDD"],
-            "north": ["XIN", "XOUT", "AVSSIO", "AVDDIO"]
+            "east": [
+              "PLL_AVSS",
+              "PLL_AVDD"
+            ],
+            "north": [
+              "XIN",
+              "XOUT",
+              "AVSSIO",
+              "AVDDIO"
+            ]
+          },
+          "io_family": "pb4-legacy",
+          "rail_mapping": {
+            "VDD": "VDD",
+            "VSS": "VSS",
+            "IOVDD": "VDD25",
+            "IOVSS": "VSSD"
           }
         }
       ],
       "detailed_routing_threads": 16,
       "detailed_routing_optimization_iterations": 1,
-      "physical_flow_status": "External manual PDK adapter using commercial PB4, physical package-pad overlays, and optional PLL_TOP"
+      "physical_flow_status": "P65/ICSIOA no-PLL reference flow with native supply ports; PB4 PLL flow retained as legacy pending a qualified P65 1.2 V PLL supply pad",
+      "p65_no_pll_floorplan": {
+        "pad_width_um": 65,
+        "pad_height_um": 130,
+        "corner_size_um": 130,
+        "core_offsets_um": {
+          "qfn32": 330,
+          "qfn64": 365,
+          "qfn88": 365,
+          "qfn128": 365
+        },
+        "overrides": {
+          "qfn32": {
+            "die_side_um": 960,
+            "core_offset_um": 330
+          }
+        }
+      }
     }
   ]
 }

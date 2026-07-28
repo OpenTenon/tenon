@@ -175,7 +175,7 @@ module tenon_ics55_pxwe1 (
   (* keep = "true" *) PFILL10 u_filler ();
 endmodule
 
-module tenon_tier0_padframe_ics55_no_pll #(
+module tenon_tier0_padframe_ics55_pb4_legacy #(
     parameter integer GPIO_COUNT    = 16,
     parameter integer PADS_PER_RAIL = 2
 ) (
@@ -447,7 +447,7 @@ module tenon_tier0_padframe_ics55_pll #(
 );
   wire pll_refclk;
 
-  tenon_tier0_padframe_ics55_no_pll #(
+  tenon_tier0_padframe_ics55_pb4_legacy #(
       .GPIO_COUNT   (GPIO_COUNT),
       .PADS_PER_RAIL(PADS_PER_RAIL)
   ) u_base (

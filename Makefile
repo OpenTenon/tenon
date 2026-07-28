@@ -15,7 +15,7 @@ SKIP_NETGEN_LVS  ?= 0
 IHP_RTL    := rtl/tenon_tier0_padframe.sv rtl/tenon_tier0_reference.sv rtl/tenon_tier0_variants.sv
 SKY130_RTL := rtl/tenon_tier0_padframe_sky130.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 GF180_RTL  := rtl/tenon_tier0_padframe_gf180.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
-ICS55_RTL  := rtl/tenon_tier0_padframe_ics55.sv rtl/tenon_tier0_padframe_ics55_qfn32_no_pll_fillers.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
+ICS55_RTL  := rtl/tenon_tier0_padframe_ics55.sv rtl/tenon_tier0_padframe_ics55_p65.sv rtl/tenon_tier0_padframe_ics55_p65_fillers.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 
 IHP_IO_MODEL         ?= $(PDK_ROOT)/$(PDK)/libs.ref/sg13g2_io/verilog/sg13g2_io.v
 SKY130_PDK           ?= sky130A
@@ -33,7 +33,8 @@ GF180_PAD            ?= gf180mcu_ocd_io
 ICS55_PDK            ?= ics55
 ICS55_PDK_ROOT       ?= $(HOME)/.ciel/manual
 ICS55_SCL            ?= ics55_LLSC_H7CR
-ICS55_PAD            ?= ics55_io_3p3
+ICS55_P65_PAD        ?= ics55_io_p65
+ICS55_LEGACY_PAD     ?= ics55_io_3p3
 ICS55_DRT_THREADS    ?= 16
 ICS55_DRT_OPT_ITERS  ?= 1
 GF180_IO_MODEL       ?= $(GF180_PDK_ROOT)/$(GF180_PDK)/libs.ref/$(GF180_PAD)/verilog/$(GF180_PAD).v
@@ -98,8 +99,8 @@ help:
 	@echo "  harden-gf180-qfn88"
 	@echo "  harden-gf180-qfn128"
 	@echo "  harden-gf180-all      Run all GF180 hardening targets sequentially"
-	@echo "  lint-ics55-no-pll     Compile ICS55 commercial-PB4 no-PLL package tops"
-	@echo "  lint-ics55-pll        Compile ICS55 commercial-PB4 PLL package tops"
+	@echo "  lint-ics55-no-pll     Compile ICS55 commercial-P65 no-PLL package tops"
+	@echo "  lint-ics55-pll        Compile ICS55 legacy-PB4 PLL package tops"
 	@echo "  lint-smoke            Compile all standalone ICS55 smoke RTL examples"
 	@echo "  smoke-run             Run all non-signoff ICS55 smoke LibreLane flows"
 	@echo "  smoke-report          Regenerate smoke/REPORTS.md from final metrics"
@@ -206,6 +207,7 @@ check-pdk-ics55:
 	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.tech/librelane/config.tcl" || (echo "Missing ICS55 LibreLane adapter" && exit 2)
 	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.ref/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_M2.lef" || (echo "Missing ICS55 H7CR LEF" && exit 2)
 	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.ref/ics55_io_3p3/lef/SP55NLLD2P_3P3V_V0p4a_6MT_1TM.lef" || (echo "Missing ICS55 SP55 LEF" && exit 2)
+	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.ref/ics55_io_p65/lef/ICSIOA_N55_3P3_1P6M1TM.lef" || (echo "Missing ICS55 P65 LEF" && exit 2)
 	@test -f "$(ICS55_PDK_ROOT)/$(ICS55_PDK)/libs.ref/ics55_pll/lef/PLL_TOP.lef" || (echo "Missing ICS55 PLL LEF" && exit 2)
 	ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" $(OPENROAD) -no_init -exit scripts/check_ics55_pdk.tcl
 
@@ -312,7 +314,7 @@ harden-gf180-all:
 
 define ICS55_HARDEN_RULE
 harden-ics55-qfn$(1)-$(2): generate check-pdk-ics55
-	DRT_THREADS=$(ICS55_DRT_THREADS) $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(ICS55_PAD) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --run-tag tenon-qfn$(1)-$(2) --overwrite $(ICS55_FLOW_DIR)/qfn$(1)-$(2).yaml
+	DRT_THREADS=$(ICS55_DRT_THREADS) $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(if $(filter no-pll,$(2)),$(ICS55_P65_PAD),$(ICS55_LEGACY_PAD)) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --run-tag tenon-qfn$(1)-$(2) --overwrite $(ICS55_FLOW_DIR)/qfn$(1)-$(2).yaml
 endef
 
 $(eval $(call ICS55_HARDEN_RULE,32,no-pll))
