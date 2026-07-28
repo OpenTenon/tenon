@@ -11,6 +11,7 @@ VERILOG_FILES:
 - dir::../../rtl/tenon_tier0_padframe_ics55.sv
 - dir::../../rtl/tenon_tier0_pdk_reference.sv
 - dir::../../rtl/tenon_tier0_pdk_variants.sv
+- dir::../../rtl/tenon_tier0_padframe_ics55_qfn32_no_pll_fillers.sv
 EXTRA_VERILOG_MODELS:
 - dir::ics55_io_blackbox.v
 EXTRA_LEFS:
@@ -80,8 +81,8 @@ CLOCK_NET: u_reference.u_padframe.u_mgmt_clk_pad.u_pad/C
 CLOCK_PERIOD: 20
 
 FP_SIZING: absolute
-DIE_AREA: [0, 0, 1600, 1600]
-CORE_AREA: [365, 365, 1235, 1235]
+DIE_AREA: [0, 0, 960, 960]
+CORE_AREA: [365, 365, 595, 595]
 PL_TARGET_DENSITY_PCT: 5
 GRT_ALLOW_CONGESTION: true
 PL_MAX_DISPLACEMENT_Y: 200
@@ -128,6 +129,13 @@ IGNORE_DISCONNECTED_MODULES:
 - PADI30
 - PADO30
 - PFILL10
+- PFILL50
+- PFILL20
+- PFILL5
+- PFILL2
+- PFILL1
+- PFILL01
+- PFILL001
 - PCORNER
 RUN_TAP_ENDCAP_INSERTION: false
 RUN_FILL_INSERTION: false
@@ -139,6 +147,13 @@ MAGIC_EXT_ABSTRACT_CELLS:
 - ^PADI30$
 - ^PADO30$
 - ^PFILL10$
+- ^PFILL50$
+- ^PFILL20$
+- ^PFILL5$
+- ^PFILL2$
+- ^PFILL1$
+- ^PFILL01$
+- ^PFILL001$
 - ^PVDD.*$
 - ^PVSS.*$
 - ^PXWE1$

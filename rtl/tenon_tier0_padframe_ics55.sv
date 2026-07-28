@@ -212,6 +212,12 @@ module tenon_tier0_padframe_ics55_no_pll #(
   (* keep = "true" *) PCORNER u_corner_nw ();
 
   generate
+    if (GPIO_COUNT == 16 && PADS_PER_RAIL == 2) begin : u_compact_qfn32
+      tenon_ics55_qfn32_no_pll_fillers u_fillers ();
+    end
+  endgenerate
+
+  generate
     for (index = 0; index < PADS_PER_RAIL; index = index + 1) begin : u_iovdd_pads
       tenon_ics55_pvdd2 #(
           .USE_PADI(index % 2)

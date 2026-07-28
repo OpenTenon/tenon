@@ -87,6 +87,12 @@
         "pll_width_um": 200,
         "pll_height_um": 120
       },
+      "no_pll_floorplan_overrides": {
+        "qfn32": {
+          "die_side_um": 960,
+          "core_offset_um": 365
+        }
+      },
       "variants": [
         {
           "id": "no-pll",

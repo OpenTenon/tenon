@@ -90,9 +90,18 @@ proc tenon_ics55_connect_core_sources {block tech net_name pad_prefix} {
             WEST -
             EAST {
                 set ring_x [tenon_ics55_core_ring_x $core $net_name $edge $width $spacing $offset]
+                set ring_south [tenon_ics55_core_ring_y $core $net_name SOUTH $width $spacing $offset]
+                set ring_north [tenon_ics55_core_ring_y $core $net_name NORTH $width $spacing $offset]
                 odb::dbSBox_create $swire $rv $x $y STRIPE
                 tenon_ics55_io_horizontal $swire $rdl $rdl_width $x $ring_x $y
                 odb::dbSBox_create $swire $rv $ring_x $y STRIPE
+                # Compact QFN32 pads can be just beyond a core-ring endpoint.
+                # Extend the T4M2 bridge to that endpoint before joining the ring.
+                if {$y < $ring_south} {
+                    tenon_ics55_io_vertical $swire $t4m2 $t4m2_width $ring_x $y $ring_south
+                } elseif {$y > $ring_north} {
+                    tenon_ics55_io_vertical $swire $t4m2 $t4m2_width $ring_x $ring_north $y
+                }
             }
             SOUTH -
             NORTH {

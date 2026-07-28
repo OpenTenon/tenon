@@ -15,7 +15,7 @@ SKIP_NETGEN_LVS  ?= 0
 IHP_RTL    := rtl/tenon_tier0_padframe.sv rtl/tenon_tier0_reference.sv rtl/tenon_tier0_variants.sv
 SKY130_RTL := rtl/tenon_tier0_padframe_sky130.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 GF180_RTL  := rtl/tenon_tier0_padframe_gf180.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
-ICS55_RTL  := rtl/tenon_tier0_padframe_ics55.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
+ICS55_RTL  := rtl/tenon_tier0_padframe_ics55.sv rtl/tenon_tier0_padframe_ics55_qfn32_no_pll_fillers.sv rtl/tenon_tier0_pdk_reference.sv rtl/tenon_tier0_pdk_variants.sv
 
 IHP_IO_MODEL         ?= $(PDK_ROOT)/$(PDK)/libs.ref/sg13g2_io/verilog/sg13g2_io.v
 SKY130_PDK           ?= sky130A
