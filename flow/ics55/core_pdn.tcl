@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Connect ICS55 core-supply pad terminals to the corresponding core rings.
 
+if {![info exists ::tenon_ics55_core_rdl_bridge_width_um]} {
+    set ::tenon_ics55_core_rdl_bridge_width_um 35
+}
+
 proc tenon_ics55_largest_t4m2_geometry {iterm} {
     set selected ""
     set selected_area -1
@@ -60,7 +64,7 @@ proc tenon_ics55_connect_core_sources {block tech net_name pad_prefix} {
     set width [expr {int($::env(PDN_CORE_RING_VWIDTH) * $units)}]
     set spacing [expr {int($::env(PDN_CORE_RING_VSPACING) * $units)}]
     set offset [expr {int($::env(PDN_CORE_RING_VOFFSET) * $units)}]
-    set rdl_width [expr {int(35 * $units)}]
+    set rdl_width [expr {int($::tenon_ics55_core_rdl_bridge_width_um * $units)}]
     set t4m2_width [expr {int($::env(PDN_CORE_RING_VWIDTH) * $units)}]
     set net [$block findNet $net_name]
     set t4m2 [$tech findLayer T4M2]

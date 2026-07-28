@@ -94,7 +94,8 @@
           "io_pdn": {
             "iovdd_ring_offset_um": 240,
             "iovss_ring_offset_um": 270,
-            "rdl_horizontal_width_um": 8
+            "rdl_horizontal_width_um": 8,
+            "core_rdl_bridge_width_um": 8
           }
         }
       },
