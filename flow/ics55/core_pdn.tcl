@@ -99,7 +99,7 @@ proc tenon_ics55_connect_core_sources {block tech net_name pad_prefix} {
                 odb::dbSBox_create $swire $rv $x $y STRIPE
                 tenon_ics55_io_horizontal $swire $rdl $rdl_width $x $ring_x $y
                 odb::dbSBox_create $swire $rv $ring_x $y STRIPE
-                # Compact QFN32 pads can be just beyond a core-ring endpoint.
+                # Commercial SP55 pad rows can be just beyond a core-ring endpoint.
                 # Extend the T4M2 bridge to that endpoint before joining the ring.
                 if {$y < $ring_south} {
                     tenon_ics55_io_vertical $swire $t4m2 $t4m2_width $ring_x $y $ring_south

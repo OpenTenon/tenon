@@ -22,8 +22,11 @@ foreach instance [$tenon_ics55_ring_block getInsts] {
         incr tenon_ics55_pad_count
     }
 }
-if {$tenon_ics55_pad_count < 32} {
-    error "ICS55 pad row has only $tenon_ics55_pad_count placed functional pads"
+if {![regexp {^tenon_tier0_ics55_qfn([0-9]+)_no_pll$} $::env(DESIGN_NAME) -> tenon_ics55_expected_pads]} {
+    error "Unsupported ICS55 no-PLL pad-row design $::env(DESIGN_NAME)"
+}
+if {$tenon_ics55_pad_count != $tenon_ics55_expected_pads} {
+    error "ICS55 pad row has $tenon_ics55_pad_count functional pads, expected $tenon_ics55_expected_pads"
 }
 
 foreach {side instance_name} {

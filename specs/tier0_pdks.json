@@ -64,15 +64,15 @@
       "reference_module": "tenon_tier0_reference_ics55_no_pll",
       "package_top_prefix": "tenon_tier0_ics55_",
       "physical_flow": "flow/ics55/qfn*-{no-pll,pll}.yaml",
-      "io_library": "ICSIOA_N55_3P3_1P6M1TM",
+      "io_library": "SP55NLLD2P_3P3V_V0p4a_6MT_1TM",
       "standard_cell_library": "ics55_LLSC_H7CR",
-      "pad_library": "ics55_io_p65",
-      "reference_pdk_tag": "CX55-commercial-P65-ICSIOA-251013-and-PB4-PLL-legacy",
+      "pad_library": "ics55_io_3p3",
+      "reference_pdk_tag": "CX55-commercial-SP55-PB4",
       "rail_mapping": {
         "VDD": "VDD",
         "VSS": "VSS",
-        "IOVDD": "VDDIO",
-        "IOVSS": "VSSIO"
+        "IOVDD": "VDD25",
+        "IOVSS": "VSSD"
       },
       "floorplan": {
         "pad_pitch_um": 40,
@@ -90,13 +90,7 @@
       "no_pll_floorplan_overrides": {
         "qfn32": {
           "die_side_um": 960,
-          "core_offset_um": 330,
-          "io_pdn": {
-            "iovdd_ring_offset_um": 240,
-            "iovss_ring_offset_um": 270,
-            "rdl_horizontal_width_um": 8,
-            "core_rdl_bridge_width_um": 8
-          }
+          "core_offset_um": 330
         }
       },
       "variants": [
@@ -106,25 +100,14 @@
           "padframe_module": "tenon_tier0_padframe_ics55_no_pll",
           "reference_module": "tenon_tier0_reference_ics55_no_pll",
           "include_pll": false,
-          "io_family": "p65",
+          "io_family": "pb4",
           "rail_mapping": {
             "VDD": "VDD",
             "VSS": "VSS",
-            "IOVDD": "VDDIO",
-            "IOVSS": "VSSIO"
+            "IOVDD": "VDD25",
+            "IOVSS": "VSSD"
           },
-          "profile_overrides": {
-            "qfn32": {
-              "io_family": "pb4",
-              "pdn_mode": "commercial-pad-row",
-              "physical_rail_mapping": {
-                "VDD": "VDD",
-                "VSS": "VSS",
-                "IOVDD": "VDD25",
-                "IOVSS": "VSSD"
-              }
-            }
-          }
+          "pdn_mode": "commercial-pad-row"
         },
         {
           "id": "pll",
@@ -144,7 +127,7 @@
               "AVDDIO"
             ]
           },
-          "io_family": "pb4-legacy",
+          "io_family": "pb4",
           "rail_mapping": {
             "VDD": "VDD",
             "VSS": "VSS",
@@ -155,24 +138,7 @@
       ],
       "detailed_routing_threads": 16,
       "detailed_routing_optimization_iterations": 1,
-      "physical_flow_status": "QFN32 no-PLL uses the commercial SP55/PB4 pad row with VDD25/VSSD mapped to logical IOVDD/IOVSS; its incomplete package-supply LEF abstracts require an explicitly named non-signoff PSM-continuation target. QFN64/QFN88/QFN128 no-PLL retain the P65/ICSIOA flow with native supply ports; PB4 PLL remains pending a qualified P65 1.2 V PLL supply pad.",
-      "p65_no_pll_floorplan": {
-        "pad_width_um": 65,
-        "pad_height_um": 130,
-        "corner_size_um": 130,
-        "core_offsets_um": {
-          "qfn32": 330,
-          "qfn64": 365,
-          "qfn88": 365,
-          "qfn128": 365
-        },
-        "overrides": {
-          "qfn32": {
-            "die_side_um": 960,
-            "core_offset_um": 330
-          }
-        }
-      }
+      "physical_flow_status": "All QFN no-PLL and PLL variants use the commercial SP55/PB4 pad row. VDD25/VSSD map to logical IOVDD/IOVSS and have incomplete package-supply LEF abstracts, so the explicitly named unsigned IO-PG continuation targets remain non-signoff."
     }
   ]
 }

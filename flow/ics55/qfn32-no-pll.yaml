@@ -11,7 +11,7 @@ VERILOG_FILES:
 - dir::../../rtl/tenon_tier0_padframe_ics55.sv
 - dir::../../rtl/tenon_tier0_pdk_reference.sv
 - dir::../../rtl/tenon_tier0_pdk_variants.sv
-- dir::../../rtl/tenon_tier0_padframe_ics55_qfn32_no_pll_fillers.sv
+- dir::../../rtl/tenon_tier0_padframe_ics55_no_pll_fillers.sv
 EXTRA_VERILOG_MODELS:
 - dir::ics55_io_blackbox.v
 EXTRA_LEFS:

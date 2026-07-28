@@ -34,8 +34,7 @@ QFN N means N wire-bondable package leads. An optional exposed pad is a package 
 | IHP SG13G2 | `tenon_tier0_padframe` | `sg13g2_io` | `VDD/VSS` | `IOVDD/IOVSS` | `flow/ihp130/qfn*.yaml` |
 | GF180MCU D | `tenon_tier0_padframe_gf180` | `gf180mcu_ocd_io` | `VDD/VSS` | `DVDD/DVSS` | `flow/gf180/qfn*.yaml` |
 | Sky130A | `tenon_tier0_padframe_sky130` | `sky130_fd_io` with `sky130_ef_io` wrappers | `VCCD/VSSD` | `VDDIO/VSSIO` | `flow/sky130/qfn*.yaml` |
-| ICS55 QFN32 no-PLL | `tenon_tier0_padframe_ics55_pb4_no_pll` | Commercial SP55 `PB4`, PADI30/PADO30 overlays, supply pads, corners and fillers | `VDD/VSS` | logical `IOVDD/IOVSS` via physical `VDD25/VSSD` | `flow/ics55/qfn32-no-pll.yaml` |
-| ICS55 QFN64/88/128 no-PLL | `tenon_tier0_padframe_ics55_no_pll` | Commercial P65/ICSIOA `P65_1233_PBMUX`, supply pads, corners and fillers | `VDD/VSS` | `VDDIO/VSSIO` | `flow/ics55/qfn{64,88,128}-no-pll.yaml` |
+| ICS55 no-PLL QFN32/64/88/128 | `tenon_tier0_padframe_ics55_no_pll` | Commercial SP55 `PB4`, PADI30/PADO30 overlays, supply pads, corners and fillers | `VDD/VSS` | logical `IOVDD/IOVSS` via physical `VDD25/VSSD` | `flow/ics55/qfn*-no-pll.yaml` |
 | ICS55 PLL | `tenon_tier0_padframe_ics55_pll` | Commercial SP55 `PB4` with PADI30/PADO30 overlays | `VDD/VSS` | `VDD25/VSSD` | `flow/ics55/qfn*-pll.yaml` |
 
 
@@ -44,9 +43,10 @@ IHP, Sky130 and GF180 physical flows default to installed Ciel revisions: IHP SG
 Sky130 uses `sky130_fd_sc_hd`, raw `sky130_fd_io` base cells, and PDK-provided `sky130_ef_io` physical wrappers. Each GPIO retains its local `TIE_HI_ESD`/`TIE_LO_ESD` static-control loop. `make generate` emits fixed-coordinate, RTL-backed pad placement Tcl for every Sky130 QFN profile, plus PSM-visible package-to-PDN bridge Tcl. Magic extracts the final GDS and uses LEF interfaces only for the named PDK IO hard-macro hierarchy, so LVS checks top-level routing and every macro boundary without re-extracting unsupported internal geometry. The core grid serves only `VCCD/VSSD`; `VDDIO/VSSIO` remain separate peripheral special-net rings and never enter the core grid. Its pad placement is committed PDK-specific Tcl rather than repository-managed PDK installation.
 
 GF180's core standard-cell library uses `VDD/VSS`; the OCD IO library calls its separate IO rails `DVDD/DVSS`. The GF180 pad ring therefore connects the core PDN only to `VDD/VSS` and maintains `DVDD/DVSS` as a separate abutted ring.
-ICS55 QFN32 no-PLL uses H7CR standard cells and commercial SP55 `PB4` functional pads with PADI30/PADO30 package-pad overlays; `PB24` is not used. `VDD25/VSSD` pins map to logical `IOVDD/IOVSS`, while `FP/FPB` remain independent internal special nets. Commercial PVDD/PVSS supply pads plus PCORNER and PFILL cells close the IO supply path in the pad row. The core mesh and ring serve only `VDD/VSS`; no synthetic IO mesh is built between the pad row and core. QFN64/88/128 no-PLL retain P65/ICSIOA `P65_1233_PBMUX` at DS1/DS0=`1/0` (8 mA), P65 supply pads, corners and fillers. All PLL variants use SP55 PB4 with `PXWE1` and `PLL_TOP`; `VDD/VSS`, `VDD25/VSSD` and PLL `AVDD/AVSS` remain separate. The external manual adapter links commercial LEF/GDS/Lib/CDL views and never invokes Calibre.
 
-The compact QFN32 no-PLL floorplan is a 960 x 960 um die with a 300 x 300 um core. Generated fixed placement uses the commercial 30 um PB4/PVSS1/PVDD2/PVSS2 and 35 um PVDD1 pitch, PADI30/PADO30 offsets, PCORNER cells and PFILL edge closure. A structural Tcl check requires all four pad-row sides, corners and filler coverage. SP55 LEF does not contain complete package/RDL `VDD25/VSSD` geometry, so `harden-ics55-qfn32-no-pll-unsigned-io-pg` executes and saves the PowerGrid PSM report but lets those violations remain non-fatal only after explicit acknowledgement. It skips only the subsequent `OpenROAD.IRDropReport` PSM rerun, which has no non-fatal control. That target is non-signoff.
+ICS55 no-PLL profiles use H7CR standard cells and commercial SP55 `PB4` functional pads with PADI30/PADO30 package-pad overlays; `PB24` is not used. Physical `VDD25/VSSD` pins map to logical `IOVDD/IOVSS`, while `FP/FPB` remain independent internal special nets. Commercial PVDD/PVSS supply pads plus PCORNER and PFILL cells close the IO supply path in the pad row. The core mesh and ring serve only `VDD/VSS`; no synthetic IO mesh is built between the pad row and core. All PLL variants use the same SP55 PB4 family with `PXWE1` and `PLL_TOP`; `VDD/VSS`, `VDD25/VSSD` and PLL `AVDD/AVSS` remain separate. The external manual adapter links commercial LEF/GDS/Lib/CDL views and never invokes Calibre.
+
+The QFN32 no-PLL floorplan is a 960 x 960 um die with a 300 x 300 um core. QFN64/QFN88/QFN128 retain their profile die sizes with a 365 um core offset. Generated fixed placement uses the commercial 30 um PB4/PVSS1/PVDD2/PVSS2 and 35 um PVDD1 pitch, PADI30/PADO30 offsets, PCORNER cells and PFILL edge closure. A structural Tcl check requires the profile's full pad count, all four pad-row sides, corners and filler coverage. SP55 LEF does not contain complete package/RDL `VDD25/VSSD` geometry, so `harden-ics55-qfn{32,64,88,128}-no-pll-unsigned-io-pg` executes and saves the PowerGrid PSM report but lets those violations remain non-fatal only after explicit acknowledgement. It skips only the subsequent `OpenROAD.IRDropReport` PSM rerun, which has no non-fatal control. These targets are non-signoff.
 
 ## Commands
 
@@ -84,7 +84,7 @@ make harden-gf180-all
 ICS55 manual-PDK checks and the non-signoff integration flow use the external adapter root:
 
 ```bash
-UNSIGNED_IO_PG=1 make harden-ics55-qfn32-no-pll-unsigned-io-pg ICS55_PDK_ROOT=$HOME/.ciel/manual SKIP_DRC=1 SKIP_MAGIC_SPICE=1 SKIP_NETGEN_LVS=1
+UNSIGNED_IO_PG=1 make harden-ics55-no-pll-unsigned-io-pg-all ICS55_PDK_ROOT=$HOME/.ciel/manual SKIP_DRC=1 SKIP_MAGIC_SPICE=1 SKIP_NETGEN_LVS=1
 make harden-ics55-qfn32-pll ICS55_PDK_ROOT=$HOME/.ciel/manual SKIP_DRC=1
 ```
 

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# QFN32 no-PLL PDN matching the commercial SP55 pad-row strategy.
+# all no-PLL profiles PDN matching the commercial SP55 pad-row strategy.
 
 source $::env(SCRIPTS_DIR)/openroad/common/io.tcl
 source $::env(SCRIPTS_DIR)/openroad/common/set_global_connections.tcl

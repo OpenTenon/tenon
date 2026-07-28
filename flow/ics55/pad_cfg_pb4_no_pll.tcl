@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Commercial asic_top-style SP55 pad binding for the QFN32 no-PLL profile.
+# Commercial asic_top-style SP55 pad binding for the all no-PLL profiles.
 
 source $::env(SCRIPTS_DIR)/openroad/common/set_global_connections.tcl
 
