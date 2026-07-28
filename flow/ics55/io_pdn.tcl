@@ -1,6 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # ICS55 package IO rings built from PVDD2/PVSS2 source-backed T4M2 terminals.
 
+if {![info exists ::tenon_ics55_iovdd_ring_offset_um]} {
+    set ::tenon_ics55_iovdd_ring_offset_um 250
+}
+if {![info exists ::tenon_ics55_iovss_ring_offset_um]} {
+    set ::tenon_ics55_iovss_ring_offset_um 300
+}
+if {![info exists ::tenon_ics55_io_rdl_horizontal_width_um]} {
+    set ::tenon_ics55_io_rdl_horizontal_width_um 35
+}
+
 proc tenon_ics55_io_box {swire layer x0 y0 x1 y1} {
     set xlo [expr {min($x0, $x1)}]
     set xhi [expr {max($x0, $x1)}]
@@ -47,7 +57,7 @@ proc tenon_ics55_build_io_ring {block tech net_name margin_um} {
     set right [expr {$die_x1 - $margin}]
     set top [expr {$die_y1 - $margin}]
     set t4m2_width [expr {int(8 * $units)}]
-    set rdl_width [expr {int(35 * $units)}]
+    set rdl_width [expr {int($::tenon_ics55_io_rdl_horizontal_width_um * $units)}]
 
     set net [$block findNet $net_name]
     if {$net eq "NULL"} {
@@ -114,6 +124,6 @@ proc tenon_ics55_build_io_ring {block tech net_name margin_um} {
 
 set tenon_ics55_io_block [ord::get_db_block]
 set tenon_ics55_io_tech [[ord::get_db] getTech]
-tenon_ics55_build_io_ring $tenon_ics55_io_block $tenon_ics55_io_tech iovdd 250
-tenon_ics55_build_io_ring $tenon_ics55_io_block $tenon_ics55_io_tech iovss 300
+tenon_ics55_build_io_ring $tenon_ics55_io_block $tenon_ics55_io_tech iovdd $::tenon_ics55_iovdd_ring_offset_um
+tenon_ics55_build_io_ring $tenon_ics55_io_block $tenon_ics55_io_tech iovss $::tenon_ics55_iovss_ring_offset_um
 

@@ -20,6 +20,12 @@ set_layer_rc -via VIA4 -resistance 2.0
 set_layer_rc -via T4V2 -resistance 0.25
 set_layer_rc -via RV -resistance 0.08
 
+set tenon_ics55_pdn_profile [string map {tenon_tier0_ics55_ "" _no_pll -no-pll _pll -pll} $::env(DESIGN_NAME)]
+set tenon_ics55_pdn_overlay [file join [file dirname [info script]] generated "${tenon_ics55_pdn_profile}_io_pdn.tcl"]
+if {[file exists $tenon_ics55_pdn_overlay]} {
+    source $tenon_ics55_pdn_overlay
+}
+
 set_global_connections
 
 set_voltage_domain -name CORE -power $::env(VDD_NET) -ground $::env(GND_NET)
