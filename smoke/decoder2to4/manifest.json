@@ -42,6 +42,10 @@
     "Drives exactly y_o[sel_i] high when enabled."
   ],
   "physical": {
-    "required_layout_units": 1
+    "required_layout_units": 1,
+    "layout_grid": {
+      "columns": 1,
+      "rows": 1
+    }
   }
 }

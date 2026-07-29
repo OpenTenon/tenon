@@ -54,6 +54,10 @@
     "Loads d_i on a rising clock edge when en_i is high and reset is low."
   ],
   "physical": {
-    "required_layout_units": 1
+    "required_layout_units": 1,
+    "layout_grid": {
+      "columns": 1,
+      "rows": 1
+    }
   }
 }

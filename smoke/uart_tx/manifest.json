@@ -87,7 +87,11 @@
     "Reports busy status and the current serial output bit on uo_out."
   ],
   "physical": {
-    "required_layout_units": 3
+    "required_layout_units": 3,
+    "layout_grid": {
+      "columns": 3,
+      "rows": 1
+    }
   },
   "testbench": "tb.sv"
 }

@@ -91,7 +91,11 @@
     "Increments the counter at a divided rate when ui_in[5] is high and emits its low nibble as a seven-segment pattern."
   ],
   "physical": {
-    "required_layout_units": 4
+    "required_layout_units": 4,
+    "layout_grid": {
+      "columns": 2,
+      "rows": 2
+    }
   },
   "testbench": "tb.sv"
 }

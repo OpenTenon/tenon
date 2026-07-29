@@ -53,6 +53,10 @@
     "Computes a_i + b_i + carry_i as sum_o and carry_o."
   ],
   "physical": {
-    "required_layout_units": 1
+    "required_layout_units": 1,
+    "layout_grid": {
+      "columns": 1,
+      "rows": 1
+    }
   }
 }

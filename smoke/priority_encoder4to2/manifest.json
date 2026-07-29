@@ -42,6 +42,10 @@
     "Drives valid_o low when request_i is zero."
   ],
   "physical": {
-    "required_layout_units": 1
+    "required_layout_units": 1,
+    "layout_grid": {
+      "columns": 1,
+      "rows": 1
+    }
   }
 }

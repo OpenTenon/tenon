@@ -91,7 +91,11 @@
     "Services a latched walk request after the red state unless an emergency forces red."
   ],
   "physical": {
-    "required_layout_units": 2
+    "required_layout_units": 2,
+    "layout_grid": {
+      "columns": 2,
+      "rows": 1
+    }
   },
   "testbench": "tb.sv"
 }

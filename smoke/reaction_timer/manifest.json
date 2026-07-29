@@ -83,7 +83,11 @@
     "Counts reaction cycles until uio_in[0] is asserted, then holds the result in DONE."
   ],
   "physical": {
-    "required_layout_units": 3
+    "required_layout_units": 3,
+    "layout_grid": {
+      "columns": 3,
+      "rows": 1
+    }
   },
   "testbench": "tb.sv"
 }

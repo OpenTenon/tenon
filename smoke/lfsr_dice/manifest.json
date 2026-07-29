@@ -87,7 +87,11 @@
     "Loads a supplied 16-bit seed or advances through a feedback polynomial while not held."
   ],
   "physical": {
-    "required_layout_units": 2
+    "required_layout_units": 2,
+    "layout_grid": {
+      "columns": 2,
+      "rows": 1
+    }
   },
   "testbench": "tb.sv"
 }

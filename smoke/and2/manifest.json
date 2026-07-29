@@ -41,6 +41,10 @@
     "Drives y_o high only when both a_i and b_i are high."
   ],
   "physical": {
-    "required_layout_units": 1
+    "required_layout_units": 1,
+    "layout_grid": {
+      "columns": 1,
+      "rows": 1
+    }
   }
 }

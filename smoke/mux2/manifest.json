@@ -47,6 +47,10 @@
     "Drives y_o from d0_i when sel_i is low and from d1_i when sel_i is high."
   ],
   "physical": {
-    "required_layout_units": 1
+    "required_layout_units": 1,
+    "layout_grid": {
+      "columns": 1,
+      "rows": 1
+    }
   }
 }

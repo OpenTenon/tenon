@@ -91,7 +91,11 @@
     "Clears both counters on reset or ui_in[1], and captures the current tick count as a lap value on uio_in[0]."
   ],
   "physical": {
-    "required_layout_units": 5
+    "required_layout_units": 5,
+    "layout_grid": {
+      "columns": 5,
+      "rows": 1
+    }
   },
   "testbench": "tb.sv"
 }

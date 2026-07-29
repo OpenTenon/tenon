@@ -87,7 +87,11 @@
     "Generates the selected per-row column pattern and optionally inverts it with uio_in[0]."
   ],
   "physical": {
-    "required_layout_units": 2
+    "required_layout_units": 2,
+    "layout_grid": {
+      "columns": 2,
+      "rows": 1
+    }
   },
   "testbench": "tb.sv"
 }

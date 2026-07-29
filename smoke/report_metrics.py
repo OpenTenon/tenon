@@ -41,15 +41,30 @@ def layout_units(design: dict[str, object]) -> int | None:
     return None
 
 
+def layout_grid(design: dict[str, object]) -> str | None:
+    physical = design.get("physical")
+    if not isinstance(physical, dict):
+        return None
+    grid = physical.get("layout_grid")
+    if not isinstance(grid, dict):
+        return None
+    columns = grid.get("columns")
+    rows = grid.get("rows")
+    if not isinstance(columns, int) or not isinstance(rows, int):
+        return None
+    return f"{columns}x{rows}"
+
+
 def report_row(design: dict[str, object]) -> tuple[str, bool]:
     name = str(design["name"])
     units = layout_units(design)
+    grid = layout_grid(design)
     run_root = ROOT / name / "runs" / RUN_TAG
     metrics_path = run_root / "final" / "metrics.json"
     post_route = stage_metrics(run_root, "*-openroad-detailedrouting/state_out.json")
     disconnected_metrics = stage_metrics(run_root, "*-checker-disconnectedpins/state_out.json")
-    if units is None or not metrics_path.exists() or post_route is None or disconnected_metrics is None:
-        return f"| {name} | NOT RUN | " + " | ".join(["-"] * 15) + " |", False
+    if units is None or grid is None or not metrics_path.exists() or post_route is None or disconnected_metrics is None:
+        return f"| {name} | NOT RUN | " + " | ".join(["-"] * 16) + " |", False
 
     die_area = post_route.get("design__die__area")
     route_drc = post_route.get("route__drc_errors")
@@ -80,6 +95,7 @@ def report_row(design: dict[str, object]) -> tuple[str, bool]:
         name,
         status,
         metric_text(units),
+        grid,
         die_target,
         metric_text(die_area),
         metric_text(die_area / 1_000_000 if isinstance(die_area, (int, float)) else None, 6),
@@ -111,8 +127,8 @@ def render(selected: set[str] | None = None) -> tuple[str, bool]:
         "25 um x 40 um layout units; actual utilization is sampled after detailed",
         "routing and before filler insertion.",
         "",
-        "| Design | Status | Units | Die target | Die (um2) | Die (mm2) | Core (um2) | Cell (um2) | Actual util (%) | Std cells | Route DRC | OpenROAD antenna | PSM | Critical disconnected | Setup WNS | Metrics | Route report |",
-        "|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+        "| Design | Status | Units | Grid | Die target | Die (um2) | Die (mm2) | Core (um2) | Cell (um2) | Actual util (%) | Std cells | Route DRC | OpenROAD antenna | PSM | Critical disconnected | Setup WNS | Metrics | Route report |",
+        "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
         *(row for row, _ in rows),
         "",
         f"Acceptance requires die area = Units * {DIE_AREA_UNIT_UM2} um2 within {DIE_AREA_TOLERANCE_UM2} um2,",

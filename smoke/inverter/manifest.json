@@ -35,6 +35,10 @@
     "Drives y_o low when a_i is high and high when a_i is low."
   ],
   "physical": {
-    "required_layout_units": 1
+    "required_layout_units": 1,
+    "layout_grid": {
+      "columns": 1,
+      "rows": 1
+    }
   }
 }

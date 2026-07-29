@@ -1,40 +1,16 @@
 #!/usr/bin/env python3
-"""Apply the fixed 25x40 um smoke layout-unit geometry to one design."""
+"""Apply the closest-to-square exact-unit geometry to one smoke design."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
 from pathlib import Path
 
 from design_manifest import ManifestError, load_designs, write_design_manifest
+from layout_geometry import closest_grid, geometry
 
 ROOT = Path(__file__).resolve().parent
-UNIT_DIE_WIDTH_UM = 25.0
-UNIT_DIE_HEIGHT_UM = 40.0
-UNIT_CORE_WIDTH_UM = 10.0
-UNIT_CORE_HEIGHT_UM = 14.0
-CORE_X_MIN_UM = 7.4
-SITE_HEIGHT_UM = 1.4
-
-
-def core_y_min(units: int) -> float:
-    ideal = 13.0 * units
-    return round(math.floor(ideal / SITE_HEIGHT_UM) * SITE_HEIGHT_UM, 1)
-
-
-def geometry(units: int) -> tuple[list[float], list[float]]:
-    y_min = core_y_min(units)
-    return (
-        [0.0, 0.0, UNIT_DIE_WIDTH_UM, UNIT_DIE_HEIGHT_UM * units],
-        [
-            CORE_X_MIN_UM,
-            y_min,
-            CORE_X_MIN_UM + UNIT_CORE_WIDTH_UM,
-            round(y_min + UNIT_CORE_HEIGHT_UM * units, 1),
-        ],
-    )
 
 
 def main() -> int:
@@ -50,16 +26,21 @@ def main() -> int:
     except ManifestError as error:
         parser.error(str(error))
 
-    die_area, core_area = geometry(args.units)
+    columns, rows = closest_grid(args.units)
+    die_area, core_area = geometry(columns, rows)
     config_path = ROOT / args.design / "config.json"
     config = json.loads(config_path.read_text())
     config["DIE_AREA"] = die_area
     config["CORE_AREA"] = core_area
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     design["physical"]["required_layout_units"] = args.units
+    design["physical"]["layout_grid"] = {"columns": columns, "rows": rows}
     write_design_manifest(args.design, design)
     load_designs([args.design])
-    print(f"{args.design}: {args.units} unit(s), die={die_area}, core={core_area}")
+    print(
+        f"{args.design}: {columns}x{rows} grid, {args.units} unit(s), "
+        f"die={die_area}, core={core_area}"
+    )
     return 0
 
 

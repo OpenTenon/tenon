@@ -14,8 +14,10 @@ smoke/<design>/
 All designs are standard-cell-only Classic flows. A layout unit is a fixed
 `25 um x 40 um` die, or `0.001 mm2`; the core is a separate physical region
 inside that die. The original small examples use one unit. Demonstration
-examples may use the first integer number of units that passes placement,
-routing, PSM, antenna, and disconnected-pin checks.
+examples use the first integer number of units that passes placement, routing,
+PSM, antenna, and disconnected-pin checks. For a multi-unit design, the exact
+factor pair with a die aspect ratio closest to one is selected while preserving
+that unit count; for example, four units use a `2x2` grid rather than `1x4`.
 
 The top-level `VDD` and `VSS` ports form the single H7CR core power domain.
 The runner stops the normal Classic flow after KLayout rendering, generates an
@@ -31,9 +33,10 @@ extraction, and Netgen LVS are skipped.
 
 Every design directory owns a `manifest.json` using schema version 1. It is the
 source of truth for the design name, top module, RTL source, functional
-category, English description, port roles, expected behavior, and required
-integer count of `25 um x 40 um` layout units. The root `smoke/manifest.json`
-is only the stable ordered catalog used by smoke tooling.
+category, English description, port roles, expected behavior, required
+integer count of `25 um x 40 um` layout units, and the exact `columns x rows`
+layout grid. The root `smoke/manifest.json` is only the stable ordered catalog
+used by smoke tooling.
 
 `config.json` remains a strict LibreLane configuration file and must not carry
 custom metadata. `make smoke-manifest-check` validates all local manifests,
@@ -86,7 +89,8 @@ python3 smoke/run_all.py --design led_chaser
 ```
 
 For greedy unit sizing, start from one unit and increase only after a physical
-capacity failure:
+capacity failure. The helper preserves that exact unit count and chooses its
+closest-to-square factor-pair grid automatically:
 
 ```sh
 python3 smoke/layout_units.py --design led_chaser --units 2

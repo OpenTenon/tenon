@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from layout_geometry import geometry
+
 ROOT = Path(__file__).resolve().parent
 CATALOG_PATH = ROOT / "manifest.json"
 SCHEMA_VERSION = 1
@@ -164,8 +166,21 @@ def _validate_design(name: str, manifest: dict[str, Any]) -> None:
     physical = manifest["physical"]
     if not isinstance(physical, dict):
         raise ManifestError(f"{label} physical must be an object")
-    _validate_keys(physical, {"required_layout_units"}, set(), f"{label} physical")
+    _validate_keys(
+        physical,
+        {"required_layout_units", "layout_grid"},
+        set(),
+        f"{label} physical",
+    )
     units = _require_positive_int(physical["required_layout_units"], f"{label} required_layout_units")
+    layout_grid = physical["layout_grid"]
+    if not isinstance(layout_grid, dict):
+        raise ManifestError(f"{label} layout_grid must be an object")
+    _validate_keys(layout_grid, {"columns", "rows"}, set(), f"{label} layout_grid")
+    columns = _require_positive_int(layout_grid["columns"], f"{label} grid columns")
+    rows = _require_positive_int(layout_grid["rows"], f"{label} grid rows")
+    if columns * rows != units:
+        raise ManifestError(f"{label} layout_grid does not match required_layout_units")
 
     design_dir = ROOT / name
     rtl_path = design_dir / rtl
@@ -184,12 +199,24 @@ def _validate_design(name: str, manifest: dict[str, Any]) -> None:
         or any(not isinstance(value, (int, float)) for value in die_area)
     ):
         raise ManifestError(f"{label} config.json DIE_AREA must contain four numbers")
-    die_area_um2 = (die_area[2] - die_area[0]) * (die_area[3] - die_area[1])
-    expected_die_area_um2 = units * DIE_AREA_UNIT_UM2
-    if abs(die_area_um2 - expected_die_area_um2) > DIE_AREA_TOLERANCE_UM2:
-        raise ManifestError(
-            f"{label} required_layout_units does not match config.json DIE_AREA"
-        )
+    expected_die_area, expected_core_area = geometry(columns, rows)
+    if any(
+        abs(actual - expected) > DIE_AREA_TOLERANCE_UM2
+        for actual, expected in zip(die_area, expected_die_area, strict=True)
+    ):
+        raise ManifestError(f"{label} layout_grid does not match config.json DIE_AREA")
+    if units > 1:
+        core_area = config.get("CORE_AREA")
+        if (
+            not isinstance(core_area, list)
+            or len(core_area) != 4
+            or any(not isinstance(value, (int, float)) for value in core_area)
+            or any(
+                abs(actual - expected) > DIE_AREA_TOLERANCE_UM2
+                for actual, expected in zip(core_area, expected_core_area, strict=True)
+            )
+        ):
+            raise ManifestError(f"{label} layout_grid does not match config.json CORE_AREA")
 
 
 def load_design(name: str) -> dict[str, Any]:
