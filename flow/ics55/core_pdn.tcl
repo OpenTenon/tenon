@@ -94,17 +94,18 @@ proc tenon_ics55_connect_core_sources {block tech net_name pad_prefix} {
             WEST -
             EAST {
                 set ring_x [tenon_ics55_core_ring_x $core $net_name $edge $width $spacing $offset]
-                set ring_south [tenon_ics55_core_ring_y $core $net_name SOUTH $width $spacing $offset]
-                set ring_north [tenon_ics55_core_ring_y $core $net_name NORTH $width $spacing $offset]
+                set core_south [$core yMin]
+                set core_north [$core yMax]
                 odb::dbSBox_create $swire $rv $x $y STRIPE
                 tenon_ics55_io_horizontal $swire $rdl $rdl_width $x $ring_x $y
                 odb::dbSBox_create $swire $rv $ring_x $y STRIPE
-                # Commercial SP55 pad rows can be just beyond a core-ring endpoint.
-                # Extend the T4M2 bridge to that endpoint before joining the ring.
-                if {$y < $ring_south} {
-                    tenon_ics55_io_vertical $swire $t4m2 $t4m2_width $ring_x $y $ring_south
-                } elseif {$y > $ring_north} {
-                    tenon_ics55_io_vertical $swire $t4m2 $t4m2_width $ring_x $ring_north $y
+                # The vertical T4M2 segments terminate at the core boundary,
+                # not at the outer horizontal RDL ring centreline. Supply pads
+                # next to a corner therefore need a short strap to that boundary.
+                if {$y < $core_south} {
+                    tenon_ics55_io_vertical $swire $t4m2 $t4m2_width $ring_x $y $core_south
+                } elseif {$y > $core_north} {
+                    tenon_ics55_io_vertical $swire $t4m2 $t4m2_width $ring_x $core_north $y
                 }
             }
             SOUTH -

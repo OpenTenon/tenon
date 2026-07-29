@@ -216,11 +216,14 @@ module tenon_tier0_padframe_ics55_pb4_legacy #(
   generate
     if (GPIO_COUNT == 16 && PADS_PER_RAIL == 2) begin : u_qfn32_no_pll_fillers
       tenon_ics55_qfn32_no_pll_fillers u_fillers ();
-    end else if (GPIO_COUNT == 40 && PADS_PER_RAIL == 4) begin : u_qfn64_no_pll_fillers
+    end
+    if (GPIO_COUNT == 40 && PADS_PER_RAIL == 4) begin : u_qfn64_no_pll_fillers
       tenon_ics55_qfn64_no_pll_fillers u_fillers ();
-    end else if (GPIO_COUNT == 56 && PADS_PER_RAIL == 6) begin : u_qfn88_no_pll_fillers
+    end
+    if (GPIO_COUNT == 56 && PADS_PER_RAIL == 6) begin : u_qfn88_no_pll_fillers
       tenon_ics55_qfn88_no_pll_fillers u_fillers ();
-    end else if (GPIO_COUNT == 88 && PADS_PER_RAIL == 8) begin : u_qfn128_no_pll_fillers
+    end
+    if (GPIO_COUNT == 88 && PADS_PER_RAIL == 8) begin : u_qfn128_no_pll_fillers
       tenon_ics55_qfn128_no_pll_fillers u_fillers ();
     end
   endgenerate

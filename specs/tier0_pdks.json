@@ -91,6 +91,18 @@
         "qfn32": {
           "die_side_um": 960,
           "core_offset_um": 252
+        },
+        "qfn64": {
+          "die_side_um": 1101,
+          "core_offset_um": 252
+        },
+        "qfn88": {
+          "die_side_um": 1346,
+          "core_offset_um": 252
+        },
+        "qfn128": {
+          "die_side_um": 1746,
+          "core_offset_um": 252
         }
       },
       "variants": [
