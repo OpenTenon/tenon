@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "name": "shift_register8",
+  "top": "shift_register8",
+  "rtl": "shift_register8.sv",
+  "kind": "sequential",
+  "description": "Eight-bit serial-input shift register with synchronous active-high reset.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "clk_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-high reset."
+    },
+    {
+      "name": "en_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Shift enable."
+    },
+    {
+      "name": "serial_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Serial bit shifted into q_o[0]."
+    },
+    {
+      "name": "q_o",
+      "direction": "output",
+      "width": 8,
+      "role": "Stored shift-register value."
+    }
+  ],
+  "expected_behavior": [
+    "Clears q_o on reset.",
+    "Shifts toward the most significant bit and inserts serial_i when enabled."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}

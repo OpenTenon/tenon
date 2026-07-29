@@ -8,6 +8,8 @@ import json
 import math
 from pathlib import Path
 
+from design_manifest import ManifestError, load_designs, write_design_manifest
+
 ROOT = Path(__file__).resolve().parent
 UNIT_DIE_WIDTH_UM = 25.0
 UNIT_DIE_HEIGHT_UM = 40.0
@@ -43,20 +45,20 @@ def main() -> int:
     if args.units < 1:
         parser.error("--units must be at least one")
 
-    manifest_path = ROOT / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    design = next((item for item in manifest["designs"] if item["name"] == args.design), None)
-    if design is None:
-        parser.error(f"unknown smoke design: {args.design}")
+    try:
+        design = load_designs([args.design])[0]
+    except ManifestError as error:
+        parser.error(str(error))
 
     die_area, core_area = geometry(args.units)
     config_path = ROOT / args.design / "config.json"
     config = json.loads(config_path.read_text())
     config["DIE_AREA"] = die_area
     config["CORE_AREA"] = core_area
-    design["layout_units"] = args.units
     config_path.write_text(json.dumps(config, indent=2) + "\n")
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    design["physical"]["required_layout_units"] = args.units
+    write_design_manifest(args.design, design)
+    load_designs([args.design])
     print(f"{args.design}: {args.units} unit(s), die={die_area}, core={core_area}")
     return 0
 

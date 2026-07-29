@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "name": "full_adder",
+  "top": "full_adder",
+  "rtl": "full_adder.sv",
+  "kind": "combinational",
+  "description": "One-bit full adder with carry input and output.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "a_i",
+      "direction": "input",
+      "width": 1,
+      "role": "First addend bit."
+    },
+    {
+      "name": "b_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Second addend bit."
+    },
+    {
+      "name": "carry_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Incoming carry bit."
+    },
+    {
+      "name": "sum_o",
+      "direction": "output",
+      "width": 1,
+      "role": "Sum bit."
+    },
+    {
+      "name": "carry_o",
+      "direction": "output",
+      "width": 1,
+      "role": "Outgoing carry bit."
+    }
+  ],
+  "expected_behavior": [
+    "Computes a_i + b_i + carry_i as sum_o and carry_o."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}

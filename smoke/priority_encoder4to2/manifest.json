@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "name": "priority_encoder4to2",
+  "top": "priority_encoder4to2",
+  "rtl": "priority_encoder4to2.sv",
+  "kind": "combinational",
+  "description": "Four-input priority encoder with valid indication.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "request_i",
+      "direction": "input",
+      "width": 4,
+      "role": "Request vector; bit 3 has the highest priority."
+    },
+    {
+      "name": "code_o",
+      "direction": "output",
+      "width": 2,
+      "role": "Encoded index of the highest asserted request."
+    },
+    {
+      "name": "valid_o",
+      "direction": "output",
+      "width": 1,
+      "role": "High when at least one request is asserted."
+    }
+  ],
+  "expected_behavior": [
+    "Encodes the highest asserted request_i bit.",
+    "Drives valid_o low when request_i is zero."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}

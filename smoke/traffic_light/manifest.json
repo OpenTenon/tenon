@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "name": "traffic_light",
+  "top": "traffic_light",
+  "rtl": "traffic_light.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Traffic-light and pedestrian-request finite-state-machine demonstrator.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Traffic control and interval bus.",
+      "bit_roles": [
+        {
+          "bits": "[0]",
+          "role": "Latch a pedestrian walk request."
+        },
+        {
+          "bits": "[1]",
+          "role": "Force the red state."
+        },
+        {
+          "bits": "[7:3]",
+          "role": "State-transition interval threshold."
+        },
+        {
+          "bits": "[2]",
+          "role": "Unused."
+        }
+      ]
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "State code on [2:0] and timer observation on [7:3]."
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Auxiliary input bus; unused by this design."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Latched walk request and timer observation."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask; all bits are driven."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Cycles GREEN, YELLOW, RED, and optional WALK states at the configured interval.",
+    "Services a latched walk request after the red state unless an emergency forces red."
+  ],
+  "physical": {
+    "required_layout_units": 2
+  },
+  "testbench": "tb.sv"
+}

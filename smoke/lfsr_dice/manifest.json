@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "name": "lfsr_dice",
+  "top": "lfsr_dice",
+  "rtl": "lfsr_dice.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Sixteen-bit LFSR pattern and dice-style random-output demonstrator.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "LFSR control and seed bus.",
+      "bit_roles": [
+        {
+          "bits": "[0]",
+          "role": "Load a seed from ui_in and uio_in."
+        },
+        {
+          "bits": "[1]",
+          "role": "Hold the LFSR state."
+        },
+        {
+          "bits": "[7:2]",
+          "role": "Seed high byte when loading."
+        }
+      ]
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Low byte of the LFSR state."
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Seed low byte when ui_in[0] requests a load."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "High byte of the LFSR state."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask; all bits are driven."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Resets to a nonzero seed.",
+    "Loads a supplied 16-bit seed or advances through a feedback polynomial while not held."
+  ],
+  "physical": {
+    "required_layout_units": 2
+  },
+  "testbench": "tb.sv"
+}

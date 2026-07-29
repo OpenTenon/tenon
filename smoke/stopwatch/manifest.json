@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "name": "stopwatch",
+  "top": "stopwatch",
+  "rtl": "stopwatch.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Twenty-four-bit start-stop-lap stopwatch demonstrator.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Run, clear, and output-selection controls.",
+      "bit_roles": [
+        {
+          "bits": "[0]",
+          "role": "Run control."
+        },
+        {
+          "bits": "[1]",
+          "role": "Synchronous clear."
+        },
+        {
+          "bits": "[4:2]",
+          "role": "Selects a tick or lap byte for uo_out."
+        },
+        {
+          "bits": "[7:5]",
+          "role": "Unused."
+        }
+      ]
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Selected byte of the tick count or captured lap count."
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Capture current count as lap value on bit [0]."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Tick-count observation and lap input reflection."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask defined by the RTL."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Increments a 24-bit tick counter while run is asserted.",
+    "Clears both counters on reset or ui_in[1], and captures the current tick count as a lap value on uio_in[0]."
+  ],
+  "physical": {
+    "required_layout_units": 5
+  },
+  "testbench": "tb.sv"
+}

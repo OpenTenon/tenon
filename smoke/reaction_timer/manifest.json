@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "name": "reaction_timer",
+  "top": "reaction_timer",
+  "rtl": "reaction_timer.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Arm-wait-go reaction-time measurement demonstrator.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Arm and wait-interval control bus.",
+      "bit_roles": [
+        {
+          "bits": "[0]",
+          "role": "Arm control."
+        },
+        {
+          "bits": "[7:1]",
+          "role": "Wait threshold before the GO state."
+        }
+      ]
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "State code on [7:6] and low reaction-count bits on [5:0]."
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Reaction event on bit [0]."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Upper reaction-count bits."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask; all bits are driven."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Moves from IDLE through WAITING to GO after arming and the configured wait interval.",
+    "Counts reaction cycles until uio_in[0] is asserted, then holds the result in DONE."
+  ],
+  "physical": {
+    "required_layout_units": 3
+  },
+  "testbench": "tb.sv"
+}

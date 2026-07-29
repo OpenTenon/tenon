@@ -4,11 +4,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+from design_manifest import load_designs
 
 ROOT = Path(__file__).resolve().parent
 RUN_TAG = "ics55-smoke"
@@ -98,13 +99,10 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    designs = json.loads((ROOT / "manifest.json").read_text())["designs"]
-    selected = set(args.design) if args.design else None
+    designs = load_designs(args.design)
     failures: list[str] = []
 
     for design in designs:
-        if selected is not None and design["name"] not in selected:
-            continue
         design_dir = ROOT / design["name"]
         command = fresh_command(args.pdk_root)
         print("+", " ".join(command), f"(cwd={design_dir})")

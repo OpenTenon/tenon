@@ -3,17 +3,18 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
+
+from design_manifest import load_designs
 
 ROOT = Path(__file__).resolve().parent
 
 
 def main() -> int:
-    designs = json.loads((ROOT / "manifest.json").read_text())["designs"]
+    designs = load_designs()
     for design in designs:
-        source = ROOT / design["name"] / design["source"]
+        source = ROOT / design["name"] / design["rtl"]
         command = [
             "iverilog",
             "-g2012",

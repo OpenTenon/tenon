@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "name": "led_matrix_scan",
+  "top": "led_matrix_scan",
+  "rtl": "led_matrix_scan.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Eight-by-eight LED matrix row/column scanner with selectable patterns.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Scan and pattern-select controls.",
+      "bit_roles": [
+        {
+          "bits": "[0]",
+          "role": "Enable row scanning."
+        },
+        {
+          "bits": "[3:1]",
+          "role": "Pattern selector."
+        },
+        {
+          "bits": "[7:4]",
+          "role": "Unused."
+        }
+      ]
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Current LED column pattern."
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Invert the column pattern on bit [0]."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "One-hot row-select output."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask; all bits are driven."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Advances a one-hot row selector at a divided rate while scanning is enabled.",
+    "Generates the selected per-row column pattern and optionally inverts it with uio_in[0]."
+  ],
+  "physical": {
+    "required_layout_units": 2
+  },
+  "testbench": "tb.sv"
+}

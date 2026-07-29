@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "name": "decoder2to4",
+  "top": "decoder2to4",
+  "rtl": "decoder2to4.sv",
+  "kind": "combinational",
+  "description": "Enabled two-bit to one-hot four-bit decoder.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "en_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Active-high decoder enable."
+    },
+    {
+      "name": "sel_i",
+      "direction": "input",
+      "width": 2,
+      "role": "Binary output-selection index."
+    },
+    {
+      "name": "y_o",
+      "direction": "output",
+      "width": 4,
+      "role": "One-hot decoded output."
+    }
+  ],
+  "expected_behavior": [
+    "Drives all y_o bits low when disabled.",
+    "Drives exactly y_o[sel_i] high when enabled."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}

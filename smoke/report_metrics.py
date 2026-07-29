@@ -7,6 +7,8 @@ import argparse
 import json
 from pathlib import Path
 
+from design_manifest import load_designs
+
 ROOT = Path(__file__).resolve().parent
 RUN_TAG = "ics55-smoke"
 DIE_AREA_UNIT_UM2 = 1_000
@@ -30,7 +32,10 @@ def stage_metrics(run_root: Path, pattern: str) -> dict[str, object] | None:
 
 
 def layout_units(design: dict[str, object]) -> int | None:
-    units = design.get("layout_units", 1)
+    physical = design.get("physical")
+    if not isinstance(physical, dict):
+        return None
+    units = physical.get("required_layout_units")
     if isinstance(units, int) and units >= 1:
         return units
     return None
@@ -94,9 +99,7 @@ def report_row(design: dict[str, object]) -> tuple[str, bool]:
 
 
 def render(selected: set[str] | None = None) -> tuple[str, bool]:
-    designs = json.loads((ROOT / "manifest.json").read_text())["designs"]
-    if selected is not None:
-        designs = [design for design in designs if design["name"] in selected]
+    designs = load_designs(selected)
     rows = [report_row(design) for design in designs]
     content = [
         "# ICS55 Smoke Reports",

@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "name": "led_chaser",
+  "top": "led_chaser",
+  "rtl": "led_chaser.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Directional eight-LED chaser with a divided update rate.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "User control bus.",
+      "bit_roles": [
+        {
+          "bits": "[0]",
+          "role": "Run enable."
+        },
+        {
+          "bits": "[1]",
+          "role": "Direction: low advances and high reverses."
+        },
+        {
+          "bits": "[7:2]",
+          "role": "Unused."
+        }
+      ]
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "One-hot LED position output."
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Auxiliary input bus; bits [2:0] are mirrored for observation."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Divider status on [7:3] and mirrored auxiliary inputs on [2:0]."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask; bits [7:3] are driven."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Cycles a one-hot bit across uo_out while ena and ui_in[0] are high.",
+    "Uses ui_in[1] to reverse the direction after each divider interval."
+  ],
+  "physical": {
+    "required_layout_units": 3
+  },
+  "testbench": "tb.sv"
+}

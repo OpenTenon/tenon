@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "name": "rgb_pwm",
+  "top": "rgb_pwm",
+  "rtl": "rgb_pwm.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Three-channel PWM color-duty demonstrator.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Red and green duty controls.",
+      "bit_roles": [
+        {
+          "bits": "[7:5]",
+          "role": "Red duty value."
+        },
+        {
+          "bits": "[4:2]",
+          "role": "Green duty value."
+        },
+        {
+          "bits": "[1:0]",
+          "role": "Unused."
+        }
+      ]
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "PWM outputs on [2:0] and phase observation on [7:3].",
+      "bit_roles": [
+        {
+          "bits": "[2]",
+          "role": "Blue PWM."
+        },
+        {
+          "bits": "[1]",
+          "role": "Green PWM."
+        },
+        {
+          "bits": "[0]",
+          "role": "Red PWM."
+        }
+      ]
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Blue duty control on bits [2:0]."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Quantized blue duty observation on bits [2:0]."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask; bits [2:0] are driven."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Advances an eight-bit PWM phase while ena is high.",
+    "Compares the phase against red, green, and blue duty settings to drive uo_out[2:0]."
+  ],
+  "physical": {
+    "required_layout_units": 2
+  },
+  "testbench": "tb.sv"
+}

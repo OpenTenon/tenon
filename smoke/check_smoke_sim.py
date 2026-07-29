@@ -3,16 +3,17 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
+
+from design_manifest import load_designs
 
 ROOT = Path(__file__).resolve().parent
 BUILD = ROOT.parent / "build" / "smoke"
 
 
 def main() -> int:
-    designs = json.loads((ROOT / "manifest.json").read_text())["designs"]
+    designs = load_designs()
     simulated = 0
     BUILD.mkdir(parents=True, exist_ok=True)
     for design in designs:
@@ -28,7 +29,7 @@ def main() -> int:
             f"{design['top']}_tb",
             "-o",
             str(output),
-            str(design_dir / design["source"]),
+            str(design_dir / design["rtl"]),
             str(design_dir / testbench),
         ]
         print("+", " ".join(compile_command))

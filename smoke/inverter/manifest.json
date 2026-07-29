@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "name": "inverter",
+  "top": "inverter",
+  "rtl": "inverter.sv",
+  "kind": "combinational",
+  "description": "Single-input logical inverter.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "a_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Logic input to invert."
+    },
+    {
+      "name": "y_o",
+      "direction": "output",
+      "width": 1,
+      "role": "Inverted logic output."
+    }
+  ],
+  "expected_behavior": [
+    "Drives y_o low when a_i is high and high when a_i is low."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}

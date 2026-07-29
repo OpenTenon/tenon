@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "name": "spi_master",
+  "top": "spi_master",
+  "rtl": "spi_master.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Eight-bit SPI-style serial-transfer demonstrator.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Byte loaded at the start of a transfer."
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Transfer status, serial clock, serial data, and chip-select state.",
+      "bit_roles": [
+        {
+          "bits": "[7:4]",
+          "role": "Transferred-bit count."
+        },
+        {
+          "bits": "[3]",
+          "role": "Busy status."
+        },
+        {
+          "bits": "[2]",
+          "role": "Active-low chip-select state."
+        },
+        {
+          "bits": "[1]",
+          "role": "Current MOSI bit."
+        },
+        {
+          "bits": "[0]",
+          "role": "Serial clock."
+        }
+      ]
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Start request on bit [0] and MISO sample on bit [1]."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Busy status and sampled MISO observation."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask; bit [0] is driven."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Starts an eight-bit transfer when uio_in[0] is asserted.",
+    "Generates a divided serial clock, shifts in uio_in[1], and exposes transfer state on uo_out."
+  ],
+  "physical": {
+    "required_layout_units": 2
+  },
+  "testbench": "tb.sv"
+}

@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "name": "sevenseg_counter",
+  "top": "sevenseg_counter",
+  "rtl": "sevenseg_counter.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Loadable hexadecimal counter with seven-segment output decoding.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Counter control bus.",
+      "bit_roles": [
+        {
+          "bits": "[3:0]",
+          "role": "Value loaded by the load control."
+        },
+        {
+          "bits": "[4]",
+          "role": "Load control."
+        },
+        {
+          "bits": "[5]",
+          "role": "Count-run enable."
+        },
+        {
+          "bits": "[7:6]",
+          "role": "Unused."
+        }
+      ]
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Seven-segment pattern on [6:0]; bit [7] is zero."
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Auxiliary input bus; unused by this design."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Upper eight bits of the internal counter."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask; all bits are driven."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Loads the low counter nibble when ui_in[4] is high.",
+    "Increments the counter at a divided rate when ui_in[5] is high and emits its low nibble as a seven-segment pattern."
+  ],
+  "physical": {
+    "required_layout_units": 4
+  },
+  "testbench": "tb.sv"
+}

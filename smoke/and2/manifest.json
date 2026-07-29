@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "name": "and2",
+  "top": "and2",
+  "rtl": "and2.sv",
+  "kind": "combinational",
+  "description": "Two-input logical AND gate.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "a_i",
+      "direction": "input",
+      "width": 1,
+      "role": "First logic input."
+    },
+    {
+      "name": "b_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Second logic input."
+    },
+    {
+      "name": "y_o",
+      "direction": "output",
+      "width": 1,
+      "role": "AND result."
+    }
+  ],
+  "expected_behavior": [
+    "Drives y_o high only when both a_i and b_i are high."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}

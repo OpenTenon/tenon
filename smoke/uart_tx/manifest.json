@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "name": "uart_tx",
+  "top": "uart_tx",
+  "rtl": "uart_tx.sv",
+  "kind": "demonstration",
+  "interface": "tiny_tapeout",
+  "description": "Byte-oriented UART transmit-frame demonstrator.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "ui_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Byte captured at the start of a transmit frame."
+    },
+    {
+      "name": "uo_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Transmit status and current serial bit.",
+      "bit_roles": [
+        {
+          "bits": "[7:4]",
+          "role": "Current frame bit index."
+        },
+        {
+          "bits": "[3]",
+          "role": "Busy status."
+        },
+        {
+          "bits": "[0]",
+          "role": "Current UART serial output bit."
+        }
+      ]
+    },
+    {
+      "name": "uio_in",
+      "direction": "input",
+      "width": 8,
+      "role": "Start request on bit [0]."
+    },
+    {
+      "name": "uio_out",
+      "direction": "output",
+      "width": 8,
+      "role": "Baud-divider counter on bits [3:0]."
+    },
+    {
+      "name": "uio_oe",
+      "direction": "output",
+      "width": 8,
+      "role": "Auxiliary output-enable mask defined by the RTL."
+    },
+    {
+      "name": "ena",
+      "direction": "input",
+      "width": 1,
+      "role": "Design activity enable; state updates only while asserted."
+    },
+    {
+      "name": "clk",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_n",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-low reset."
+    }
+  ],
+  "expected_behavior": [
+    "Captures ui_in and sends a start bit, eight data bits, and a stop bit after uio_in[0] requests transmission.",
+    "Reports busy status and the current serial output bit on uo_out."
+  ],
+  "physical": {
+    "required_layout_units": 3
+  },
+  "testbench": "tb.sv"
+}

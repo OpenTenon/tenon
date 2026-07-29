@@ -6,7 +6,8 @@ Each design uses a LibreLane newcomers-style directory:
 
 ```text
 smoke/<design>/
-  config.json
+  manifest.json  # Design metadata owned by this directory
+  config.json    # LibreLane physical-flow configuration
   <design>.sv
 ```
 
@@ -26,9 +27,22 @@ timing checks.
 These are non-signoff evaluations: Magic DRC, KLayout DRC, Magic Spice
 extraction, and Netgen LVS are skipped.
 
+## Design Manifests
+
+Every design directory owns a `manifest.json` using schema version 1. It is the
+source of truth for the design name, top module, RTL source, functional
+category, English description, port roles, expected behavior, and required
+integer count of `25 um x 40 um` layout units. The root `smoke/manifest.json`
+is only the stable ordered catalog used by smoke tooling.
+
+`config.json` remains a strict LibreLane configuration file and must not carry
+custom metadata. `make smoke-manifest-check` validates all local manifests,
+their files, their `DESIGN_NAME` values, and the agreement between each layout
+unit count and its configured die area. It is part of `make check`.
+
 ## Demonstrations
 
-The `*` examples have Tiny Tapeout-style external ports in addition to
+The demonstration examples have Tiny Tapeout-style external ports in addition to
 `VDD/VSS`: `ui_in[7:0]`, `uo_out[7:0]`, `uio_in[7:0]`, `uio_out[7:0]`,
 `uio_oe[7:0]`, `ena`, `clk`, and synchronous active-low `rst_n`.
 

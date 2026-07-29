@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "name": "xor2",
+  "top": "xor2",
+  "rtl": "xor2.sv",
+  "kind": "combinational",
+  "description": "Two-input exclusive-OR gate.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "a_i",
+      "direction": "input",
+      "width": 1,
+      "role": "First logic input."
+    },
+    {
+      "name": "b_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Second logic input."
+    },
+    {
+      "name": "y_o",
+      "direction": "output",
+      "width": 1,
+      "role": "Exclusive-OR result."
+    }
+  ],
+  "expected_behavior": [
+    "Drives y_o high when a_i and b_i have different values."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}

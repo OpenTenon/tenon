@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "name": "register8",
+  "top": "register8",
+  "rtl": "register8.sv",
+  "kind": "sequential",
+  "description": "Eight-bit enabled register with synchronous active-high reset.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "clk_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Clock input."
+    },
+    {
+      "name": "rst_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Synchronous active-high reset."
+    },
+    {
+      "name": "en_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Load enable."
+    },
+    {
+      "name": "d_i",
+      "direction": "input",
+      "width": 8,
+      "role": "Register data input."
+    },
+    {
+      "name": "q_o",
+      "direction": "output",
+      "width": 8,
+      "role": "Stored register value."
+    }
+  ],
+  "expected_behavior": [
+    "Clears q_o on a rising clock edge when rst_i is high.",
+    "Loads d_i on a rising clock edge when en_i is high and reset is low."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}

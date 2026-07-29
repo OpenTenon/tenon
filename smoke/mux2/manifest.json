@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "name": "mux2",
+  "top": "mux2",
+  "rtl": "mux2.sv",
+  "kind": "combinational",
+  "description": "Two-to-one single-bit multiplexer.",
+  "ports": [
+    {
+      "name": "VDD",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core power supply."
+    },
+    {
+      "name": "VSS",
+      "direction": "inout",
+      "width": 1,
+      "role": "H7CR core ground supply."
+    },
+    {
+      "name": "d0_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Data input selected when sel_i is low."
+    },
+    {
+      "name": "d1_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Data input selected when sel_i is high."
+    },
+    {
+      "name": "sel_i",
+      "direction": "input",
+      "width": 1,
+      "role": "Data-select control."
+    },
+    {
+      "name": "y_o",
+      "direction": "output",
+      "width": 1,
+      "role": "Selected data output."
+    }
+  ],
+  "expected_behavior": [
+    "Drives y_o from d0_i when sel_i is low and from d1_i when sel_i is high."
+  ],
+  "physical": {
+    "required_layout_units": 1
+  }
+}
