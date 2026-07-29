@@ -2,7 +2,7 @@
 # Compact single-domain PDN for standalone ICS55 H7CR smoke designs.
 
 # The 0.3 um rails and 0.2 um spacing satisfy the 0.18 um2 minimum enclosed
-# area while fitting the smallest 60%-utilization smoke cores.
+# area while fitting the smallest retained smoke cores.
 source $::env(SCRIPTS_DIR)/openroad/common/io.tcl
 source $::env(SCRIPTS_DIR)/openroad/common/set_global_connections.tcl
 
