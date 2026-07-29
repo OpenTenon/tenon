@@ -59,6 +59,106 @@
       "top": "counter8",
       "source": "counter8.sv",
       "kind": "sequential"
+    },
+    {
+      "name": "led_chaser",
+      "top": "led_chaser",
+      "source": "led_chaser.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "LED chaser",
+      "testbench": "tb.sv",
+      "layout_units": 3
+    },
+    {
+      "name": "rgb_pwm",
+      "top": "rgb_pwm",
+      "source": "rgb_pwm.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "RGB PWM",
+      "testbench": "tb.sv",
+      "layout_units": 2
+    },
+    {
+      "name": "traffic_light",
+      "top": "traffic_light",
+      "source": "traffic_light.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "traffic light FSM",
+      "testbench": "tb.sv",
+      "layout_units": 2
+    },
+    {
+      "name": "sevenseg_counter",
+      "top": "sevenseg_counter",
+      "source": "sevenseg_counter.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "seven segment counter",
+      "testbench": "tb.sv",
+      "layout_units": 4
+    },
+    {
+      "name": "uart_tx",
+      "top": "uart_tx",
+      "source": "uart_tx.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "UART transmitter",
+      "testbench": "tb.sv",
+      "layout_units": 3
+    },
+    {
+      "name": "spi_master",
+      "top": "spi_master",
+      "source": "spi_master.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "SPI master",
+      "testbench": "tb.sv",
+      "layout_units": 2
+    },
+    {
+      "name": "lfsr_dice",
+      "top": "lfsr_dice",
+      "source": "lfsr_dice.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "LFSR dice",
+      "testbench": "tb.sv",
+      "layout_units": 2
+    },
+    {
+      "name": "reaction_timer",
+      "top": "reaction_timer",
+      "source": "reaction_timer.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "reaction timer",
+      "testbench": "tb.sv",
+      "layout_units": 3
+    },
+    {
+      "name": "stopwatch",
+      "top": "stopwatch",
+      "source": "stopwatch.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "stopwatch",
+      "testbench": "tb.sv",
+      "layout_units": 5
+    },
+    {
+      "name": "led_matrix_scan",
+      "top": "led_matrix_scan",
+      "source": "led_matrix_scan.sv",
+      "kind": "demonstration",
+      "interface": "tiny_tapeout",
+      "description": "LED matrix scanner",
+      "testbench": "tb.sv",
+      "layout_units": 2
     }
   ]
 }

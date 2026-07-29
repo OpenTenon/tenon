@@ -67,7 +67,7 @@ ifneq ($(filter 1 true TRUE yes YES,$(SKIP_NETGEN_LVS)),)
 ICS55_NETGEN_LVS_SKIP := --skip Netgen.LVS
 endif
 
-.PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-compile-ics55 sim-ihp sim-sky130 sim-gf180 sim-ics55 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 check-pdk-ics55 lint lint-ihp lint-sky130 lint-gf180 lint-ics55 lint-ics55-no-pll lint-ics55-pll lint-smoke smoke-run smoke-report lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128
+.PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-compile-ics55 sim-ihp sim-sky130 sim-gf180 sim-ics55 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 check-pdk-ics55 lint lint-ihp lint-sky130 lint-gf180 lint-ics55 lint-ics55-no-pll lint-ics55-pll lint-smoke smoke-sim smoke-run smoke-report lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128
 .PHONY: harden-sky130-all harden-sky130-qfn32 harden-sky130-qfn64 harden-sky130-qfn88 harden-sky130-qfn128 harden-ics55-no-pll-all harden-ics55-pll-all harden-ics55-qfn32-no-pll harden-ics55-qfn64-no-pll harden-ics55-qfn88-no-pll harden-ics55-qfn128-no-pll harden-ics55-qfn32-pll harden-ics55-qfn64-pll harden-ics55-qfn88-pll harden-ics55-qfn128-pll harden-ics55-qfn32-no-pll-unsigned-io-pg harden-ics55-qfn64-no-pll-unsigned-io-pg harden-ics55-qfn88-no-pll-unsigned-io-pg harden-ics55-qfn128-no-pll-unsigned-io-pg harden-ics55-no-pll-unsigned-io-pg-all
 
 help:
@@ -118,10 +118,13 @@ generate:
 check-generated:
 	$(PYTHON) tools/generate_tier0.py --check
 
-check: check-generated lint-smoke
+check: check-generated lint-smoke smoke-sim
 
 lint-smoke:
 	$(PYTHON) $(SMOKE_DIR)/check_rtl.py
+
+smoke-sim:
+	$(PYTHON) $(SMOKE_DIR)/check_smoke_sim.py
 
 smoke-run:
 	$(PYTHON) $(SMOKE_DIR)/run_all.py

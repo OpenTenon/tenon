@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "version": 3,
+    "flow": "Classic"
+  },
+  "DESIGN_NAME": "rgb_pwm",
+  "VERILOG_FILES": [
+    "dir::rgb_pwm.sv"
+  ],
+  "PAD_LIBS": null,
+  "PAD_VERILOG_MODELS": null,
+  "PAD_GDS": [],
+  "PAD_LEFS": [],
+  "PAD_SPICE_MODELS": [],
+  "PAD_CDLS": [],
+  "VDD_NETS": [
+    "VDD"
+  ],
+  "GND_NETS": [
+    "VSS"
+  ],
+  "FP_SIZING": "absolute",
+  "DIE_AREA": [
+    0.0,
+    0.0,
+    25.0,
+    80.0
+  ],
+  "CORE_AREA": [
+    7.4,
+    25.2,
+    17.4,
+    53.2
+  ],
+  "GRT_ALLOW_CONGESTION": false,
+  "PDN_CFG": "dir::../pdn.tcl",
+  "PDN_ENABLE_GLOBAL_CONNECTIONS": true,
+  "PDN_ENABLE_PINS": true,
+  "PDN_ENABLE_RAILS": true,
+  "PDN_CORE_RING": true,
+  "PDN_CORE_RING_CONNECT_TO_PADS": true,
+  "RUN_POST_GPL_DESIGN_REPAIR": false,
+  "RUN_CTS": false,
+  "RUN_POST_CTS_RESIZER_TIMING": false,
+  "RUN_POST_GRT_RESIZER_TIMING": false,
+  "DESIGN_REPAIR_BUFFER_INPUT_PORTS": false,
+  "DESIGN_REPAIR_BUFFER_OUTPUT_PORTS": false,
+  "DRT_THREADS": 16,
+  "DRT_OPT_ITERS": 8,
+  "RUN_MAGIC_STREAMOUT": false,
+  "ERROR_ON_PDN_VIOLATIONS": true,
+  "ERROR_ON_TR_DRC": true,
+  "ERROR_ON_DISCONNECTED_PINS": true,
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 20
+}

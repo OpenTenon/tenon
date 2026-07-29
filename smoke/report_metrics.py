@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 RUN_TAG = "ics55-smoke"
-DIE_AREA_TARGET_UM2 = 1_000
+DIE_AREA_UNIT_UM2 = 1_000
 DIE_AREA_TOLERANCE_UM2 = 0.001
 
 
@@ -29,14 +29,22 @@ def stage_metrics(run_root: Path, pattern: str) -> dict[str, object] | None:
     return metrics if isinstance(metrics, dict) else None
 
 
-def report_row(design: dict[str, str]) -> tuple[str, bool]:
-    name = design["name"]
+def layout_units(design: dict[str, object]) -> int | None:
+    units = design.get("layout_units", 1)
+    if isinstance(units, int) and units >= 1:
+        return units
+    return None
+
+
+def report_row(design: dict[str, object]) -> tuple[str, bool]:
+    name = str(design["name"])
+    units = layout_units(design)
     run_root = ROOT / name / "runs" / RUN_TAG
     metrics_path = run_root / "final" / "metrics.json"
     post_route = stage_metrics(run_root, "*-openroad-detailedrouting/state_out.json")
     disconnected_metrics = stage_metrics(run_root, "*-checker-disconnectedpins/state_out.json")
-    if not metrics_path.exists() or post_route is None or disconnected_metrics is None:
-        return f"| {name} | NOT RUN | " + " | ".join(["-"] * 14) + " |", False
+    if units is None or not metrics_path.exists() or post_route is None or disconnected_metrics is None:
+        return f"| {name} | NOT RUN | " + " | ".join(["-"] * 15) + " |", False
 
     die_area = post_route.get("design__die__area")
     route_drc = post_route.get("route__drc_errors")
@@ -44,6 +52,7 @@ def report_row(design: dict[str, str]) -> tuple[str, bool]:
     psm = post_route.get("design__power_grid_violation__count")
     disconnected = disconnected_metrics.get("design__critical_disconnected_pin__count")
     flow_errors = post_route.get("flow__errors__count")
+    expected_die_area = units * DIE_AREA_UNIT_UM2
     checks_passed = (
         flow_errors == 0
         and route_drc == 0
@@ -53,7 +62,7 @@ def report_row(design: dict[str, str]) -> tuple[str, bool]:
     )
     die_matches_target = (
         isinstance(die_area, (int, float))
-        and abs(die_area - DIE_AREA_TARGET_UM2) <= DIE_AREA_TOLERANCE_UM2
+        and abs(die_area - expected_die_area) <= DIE_AREA_TOLERANCE_UM2
     )
     passed = checks_passed and die_matches_target
     status = "PASS" if passed else "FAIL"
@@ -65,6 +74,7 @@ def report_row(design: dict[str, str]) -> tuple[str, bool]:
     values = (
         name,
         status,
+        metric_text(units),
         die_target,
         metric_text(die_area),
         metric_text(die_area / 1_000_000 if isinstance(die_area, (int, float)) else None, 6),
@@ -94,17 +104,17 @@ def render(selected: set[str] | None = None) -> tuple[str, bool]:
         "All results are non-signoff evaluations. Magic DRC, KLayout DRC, Magic",
         "Spice extraction, and Netgen LVS are skipped. Route DRC, OpenROAD",
         "antenna, PSM, and critical disconnected-pin results are read from the",
-        "corresponding completed flow stages. Every die is fixed at 1000 um2; actual",
-        "utilization is sampled after detailed routing and before filler insertion.",
+        "corresponding completed flow stages. Every die uses an integer number of",
+        "25 um x 40 um layout units; actual utilization is sampled after detailed",
+        "routing and before filler insertion.",
         "",
-        "| Design | Status | Die target | Die (um2) | Die (mm2) | Core (um2) | Cell (um2) | Actual util (%) | Std cells | Route DRC | OpenROAD antenna | PSM | Critical disconnected | Setup WNS | Metrics | Route report |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+        "| Design | Status | Units | Die target | Die (um2) | Die (mm2) | Core (um2) | Cell (um2) | Actual util (%) | Std cells | Route DRC | OpenROAD antenna | PSM | Critical disconnected | Setup WNS | Metrics | Route report |",
+        "|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
         *(row for row, _ in rows),
         "",
-        f"Acceptance requires die area = {DIE_AREA_TARGET_UM2} um2 within {DIE_AREA_TOLERANCE_UM2} um2,",
-        "zero flow errors,",
-        "zero route DRC, zero OpenROAD antenna violations, zero PSM violations, and",
-        "zero critical disconnected pins.",
+        f"Acceptance requires die area = Units * {DIE_AREA_UNIT_UM2} um2 within {DIE_AREA_TOLERANCE_UM2} um2,",
+        "zero flow errors, zero route DRC, zero OpenROAD antenna violations, zero PSM",
+        "violations, and zero critical disconnected pins.",
     ]
     return "\n".join(content) + "\n", all(passed for _, passed in rows)
 
