@@ -1,0 +1,17 @@
+# ICS55 KLayout DEF/LEF to GDS mapping.
+# Routing entries include DEF special-net and via purposes so package PDN is streamed.
+MET1  NET,SPNET,PIN,LEFPIN,VIA  81  1
+MET2  NET,SPNET,PIN,LEFPIN,VIA  82  1
+MET3  NET,SPNET,PIN,LEFPIN,VIA  83  1
+MET4  NET,SPNET,PIN,LEFPIN,VIA  84  1
+MET5  NET,SPNET,PIN,LEFPIN,VIA  85  1
+VIA1  VIA,PIN,LEFPIN             91  1
+VIA2  VIA,PIN,LEFPIN             92  1
+VIA3  VIA,PIN,LEFPIN             93  1
+VIA4  VIA,PIN,LEFPIN             94  1
+T4M2  NET,SPNET,PIN,LEFPIN,VIA  103  1
+NAME  T4M2/LABEL                  103  1
+T4V1  VIA,PIN,LEFPIN            112  1
+T4V2  VIA,PIN,LEFPIN            113  1
+RV    VIA,PIN,LEFPIN            122  1
+RDL   NET,SPNET,PIN,LEFPIN,VIA  123  1

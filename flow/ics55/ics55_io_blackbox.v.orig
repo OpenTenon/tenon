@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+// Structural black boxes matching the SP55 LEF/CDL PB24, PVDD1 and PVSS1 cells.
+
+`default_nettype none
+
+module PB24 (VSSD, VSS, PAD, OEN, C, IE, I, VDD25, VDD, FP, FPB);
+  inout VSSD, VSS, PAD, VDD25, VDD, FP, FPB;
+  input OEN, IE, I;
+  output C;
+endmodule
+
+module PVDD1 (VDD, VDD25);
+  inout VDD, VDD25;
+endmodule
+
+module PVSS1 (VSS, VSSD);
+  inout VSS, VSSD;
+endmodule
+
+`default_nettype wire

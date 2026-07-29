@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-// Functional checks against the IHP SG13G2 behavioral IO models.
+// Functional checks for every Tier0 PadCell adapter.
 
 // verilog_format: off
 `timescale 1ns/1ps
 `default_nettype none
 // verilog_format: on
+
+`ifndef TENON_TIER0_DUT
+`define TENON_TIER0_DUT tenon_tier0_padframe
+`endif
 
 module tenon_tier0_case #(
     parameter integer GPIO_COUNT    = 16,
@@ -51,7 +55,7 @@ module tenon_tier0_case #(
   assign uart_rx_pad    = uart_rx_drive;
   assign gpio_pad       = external_gpio_oe ? external_gpio : {GPIO_COUNT{1'bz}};
 
-  tenon_tier0_padframe #(
+  `TENON_TIER0_DUT #(
       .GPIO_COUNT   (GPIO_COUNT),
       .PADS_PER_RAIL(PADS_PER_RAIL)
   ) dut (

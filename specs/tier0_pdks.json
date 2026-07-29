@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "package_profiles": "tier0_profiles.json",
+  "pdks": [
+    {
+      "id": "ihp-sg13g2",
+      "padframe_module": "tenon_tier0_padframe",
+      "reference_module": "tenon_tier0_reference",
+      "physical_flow": "flow/ihp130/qfn*.yaml",
+      "io_library": "sg13g2_io",
+      "reference_pdk_tag": "3b5a704ba6738aa686b08706187830e6284d2a10",
+      "rail_mapping": {
+        "VDD": "VDD",
+        "VSS": "VSS",
+        "IOVDD": "IOVDD",
+        "IOVSS": "IOVSS"
+      }
+    },
+    {
+      "id": "sky130A",
+      "padframe_module": "tenon_tier0_padframe_sky130",
+      "reference_module": "tenon_tier0_reference_sky130",
+      "package_top_prefix": "tenon_tier0_sky130_",
+      "io_library": "sky130_fd_io",
+      "tiny_tapeout_baseline": "TinyTapeout/tt-gds-action@ttsky26c",
+      "rail_mapping": {
+        "VDD": "VCCD",
+        "VSS": "VSSD",
+        "IOVDD": "VDDIO",
+        "IOVSS": "VSSIO"
+      },
+      "physical_flow": "flow/sky130/qfn*.yaml",
+      "reference_pdk_tag": "8afc8346a57fe1ab7934ba5a6056ea8b43078e71",
+      "standard_cell_library": "sky130_fd_sc_hd",
+      "pad_library": "sky130_fd_io",
+      "physical_flow_status": "Sky130 EF-IO wrapper reference flow generated from audited Ciel geometry"
+    },
+    {
+      "id": "gf180mcuD",
+      "padframe_module": "tenon_tier0_padframe_gf180",
+      "reference_module": "tenon_tier0_reference_gf180",
+      "package_top_prefix": "tenon_tier0_gf180_",
+      "physical_flow": "flow/gf180/qfn*.yaml",
+      "io_library": "gf180mcu_ocd_io",
+      "reference_pdk_tag": "f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7",
+      "rail_mapping": {
+        "VDD": "VDD",
+        "VSS": "VSS",
+        "IOVDD": "DVDD",
+        "IOVSS": "DVSS"
+      },
+      "floorplan": {
+        "pad_width_um": 75,
+        "corner_width_um": 355,
+        "edge_spacing_um": 26,
+        "pad_spacing_um": 60,
+        "core_offset_um": 442
+      },
+      "physical_flow_status": "GF180 OCD reference flow generated from audited PDK geometry"
+    },
+    {
+      "id": "ics55",
+      "padframe_module": "tenon_tier0_padframe_ics55_no_pll",
+      "reference_module": "tenon_tier0_reference_ics55_no_pll",
+      "package_top_prefix": "tenon_tier0_ics55_",
+      "physical_flow": "flow/ics55/qfn*-{no-pll,pll}.yaml",
+      "io_library": "SP55NLLD2P_3P3V_V0p4a_6MT_1TM",
+      "standard_cell_library": "ics55_LLSC_H7CR",
+      "pad_library": "ics55_io_3p3",
+      "reference_pdk_tag": "CX55-commercial-SP55-PB4",
+      "rail_mapping": {
+        "VDD": "VDD",
+        "VSS": "VSS",
+        "IOVDD": "VDD25",
+        "IOVSS": "VSSD"
+      },
+      "floorplan": {
+        "pad_pitch_um": 40,
+        "pad_width_um": 30,
+        "pad_height_um": 228,
+        "filler_cell": "PFILL10",
+        "filler_width_um": 10,
+        "corner_cell": "PCORNER",
+        "corner_size_um": 228,
+        "core_offset_um": 365,
+        "pll_halo_um": 20,
+        "pll_width_um": 200,
+        "pll_height_um": 120
+      },
+      "no_pll_floorplan_overrides": {
+        "qfn32": {
+          "die_side_um": 960,
+          "core_offset_um": 252
+        },
+        "qfn64": {
+          "die_side_um": 1101,
+          "core_offset_um": 252
+        },
+        "qfn88": {
+          "die_side_um": 1346,
+          "core_offset_um": 252
+        },
+        "qfn128": {
+          "die_side_um": 1746,
+          "core_offset_um": 252
+        }
+      },
+      "variants": [
+        {
+          "id": "no-pll",
+          "top_suffix": "no_pll",
+          "padframe_module": "tenon_tier0_padframe_ics55_no_pll",
+          "reference_module": "tenon_tier0_reference_ics55_no_pll",
+          "include_pll": false,
+          "io_family": "pb4",
+          "rail_mapping": {
+            "VDD": "VDD",
+            "VSS": "VSS",
+            "IOVDD": "VDD25",
+            "IOVSS": "VSSD"
+          },
+          "pdn_mode": "commercial-pad-row"
+        },
+        {
+          "id": "pll",
+          "top_suffix": "pll",
+          "padframe_module": "tenon_tier0_padframe_ics55_pll",
+          "reference_module": "tenon_tier0_reference_ics55_pll",
+          "include_pll": true,
+          "gpio_reservations": {
+            "east": [
+              "PLL_AVSS",
+              "PLL_AVDD"
+            ],
+            "north": [
+              "XIN",
+              "XOUT",
+              "AVSSIO",
+              "AVDDIO"
+            ]
+          },
+          "io_family": "pb4",
+          "rail_mapping": {
+            "VDD": "VDD",
+            "VSS": "VSS",
+            "IOVDD": "VDD25",
+            "IOVSS": "VSSD"
+          }
+        }
+      ],
+      "detailed_routing_threads": 16,
+      "detailed_routing_optimization_iterations": 1,
+      "physical_flow_status": "All QFN no-PLL and PLL variants use the commercial SP55/PB4 pad row. VDD25/VSSD map to logical IOVDD/IOVSS and have incomplete package-supply LEF abstracts, so the explicitly named unsigned IO-PG continuation targets remain non-signoff."
+    }
+  ]
+}

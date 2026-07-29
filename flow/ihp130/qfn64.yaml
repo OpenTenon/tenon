@@ -8,9 +8,9 @@ meta:
 
 DESIGN_NAME: tenon_tier0_qfn64
 VERILOG_FILES:
-- dir::../rtl/tenon_tier0_padframe.sv
-- dir::../rtl/tenon_tier0_reference.sv
-- dir::../rtl/tenon_tier0_variants.sv
+- dir::../../rtl/tenon_tier0_padframe.sv
+- dir::../../rtl/tenon_tier0_reference.sv
+- dir::../../rtl/tenon_tier0_variants.sv
 VERILOG_DEFINES: [FUNCTIONAL]
 PRIMARY_GDSII_STREAMOUT_TOOL: klayout
 
@@ -109,9 +109,9 @@ PDN_CORE_RING_HSPACING: 5
 
 PAD_BONDPAD_NAME: bondpad_70x70_novias
 EXTRA_GDS:
-- dir::../ip/bondpad_70x70_novias/gds/bondpad_70x70_novias.gds
+- dir::../../ip/bondpad_70x70_novias/gds/bondpad_70x70_novias.gds
 EXTRA_LEFS:
-- dir::../ip/bondpad_70x70_novias/lef/bondpad_70x70_novias.lef
+- dir::../../ip/bondpad_70x70_novias/lef/bondpad_70x70_novias.lef
 IGNORE_DISCONNECTED_MODULES:
 - bondpad_70x70_novias
 MAGIC_EXT_UNIQUE: notopports

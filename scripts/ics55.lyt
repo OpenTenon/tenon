@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<technology>
+ <name>ics55</name>
+ <description>ICS55 manual adapter technology</description>
+ <group/>
+ <dbu>0.001</dbu>
+ <layer-properties_file>ics55.lyp</layer-properties_file>
+ <add-other-layers>true</add-other-layers>
+ <reader-options>
+  <gds2><box-mode>1</box-mode><allow-big-records>true</allow-big-records><allow-multi-xy-records>true</allow-multi-xy-records></gds2>
+  <common><create-other-layers>true</create-other-layers><enable-properties>true</enable-properties><enable-text-objects>true</enable-text-objects></common>
+ </reader-options>
+</technology>

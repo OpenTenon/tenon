@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "version": 3,
+    "flow": "Classic"
+  },
+  "DESIGN_NAME": "decoder2to4",
+  "VERILOG_FILES": [
+    "dir::decoder2to4.sv"
+  ],
+  "PAD_LIBS": null,
+  "PAD_VERILOG_MODELS": null,
+  "PAD_GDS": [],
+  "PAD_LEFS": [],
+  "PAD_SPICE_MODELS": [],
+  "PAD_CDLS": [],
+  "VDD_NETS": [
+    "VDD"
+  ],
+  "GND_NETS": [
+    "VSS"
+  ],
+  "FP_SIZING": "absolute",
+  "DIE_AREA": [
+    0,
+    0,
+    96,
+    96
+  ],
+  "CORE_AREA": [
+    14,
+    14,
+    82,
+    82
+  ],
+  "PL_TARGET_DENSITY_PCT": 30,
+  "GRT_ALLOW_CONGESTION": false,
+  "PDN_CFG": "dir::../pdn.tcl",
+  "PDN_ENABLE_GLOBAL_CONNECTIONS": true,
+  "PDN_ENABLE_PINS": true,
+  "PDN_ENABLE_RAILS": true,
+  "PDN_CORE_RING": true,
+  "PDN_CORE_RING_CONNECT_TO_PADS": true,
+  "DRT_THREADS": 16,
+  "DRT_OPT_ITERS": 8,
+  "RUN_MAGIC_STREAMOUT": false,
+  "ERROR_ON_PDN_VIOLATIONS": true,
+  "ERROR_ON_TR_DRC": true,
+  "ERROR_ON_DISCONNECTED_PINS": true
+}

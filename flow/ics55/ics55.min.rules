@@ -1,0 +1,56 @@
+Extraction Rules for OpenRCX
+
+DIAGMODEL ON
+
+LayerCount 7
+DensityRate 1 0
+DensityModel 0
+
+Metal 1 RESOVER
+WIDTH Table 1 entries: 0.081
+Metal 1 RESOVER 0
+DIST count 1 width 0.081
+0 0 0 0.0002549
+END DIST
+
+Metal 2 RESOVER
+WIDTH Table 1 entries: 0.090
+Metal 2 RESOVER 0
+DIST count 1 width 0.090
+0 0 0 0.0002422
+END DIST
+
+Metal 3 RESOVER
+WIDTH Table 1 entries: 0.090
+Metal 3 RESOVER 0
+DIST count 1 width 0.090
+0 0 0 0.0002422
+END DIST
+
+Metal 4 RESOVER
+WIDTH Table 1 entries: 0.090
+Metal 4 RESOVER 0
+DIST count 1 width 0.090
+0 0 0 0.0002422
+END DIST
+
+Metal 5 RESOVER
+WIDTH Table 1 entries: 0.090
+Metal 5 RESOVER 0
+DIST count 1 width 0.090
+0 0 0 0.0002422
+END DIST
+
+Metal 6 RESOVER
+WIDTH Table 1 entries: 0.360
+Metal 6 RESOVER 0
+DIST count 1 width 0.360
+0 0 0 0.0002422
+END DIST
+
+Metal 7 RESOVER
+WIDTH Table 1 entries: 2.700
+Metal 7 RESOVER 0
+DIST count 1 width 2.700
+0 0 0 0.0002422
+END DIST

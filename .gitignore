@@ -1,5 +1,9 @@
 build/
-flow/runs/
+flow/ihp130/runs/
+flow/sky130/runs/
+flow/gf180/runs/
+flow/ics55/runs/
+smoke/*/runs/
 *.vvp
 *.fst
 __pycache__/

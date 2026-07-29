@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 RTL_SUFFIXES = {".sv", ".svh", ".v", ".vh"}
-RTL_ROOTS = {"rtl", "tb"}
+RTL_ROOTS = {"rtl", "smoke", "tb"}
 
 
 def tracked_files(root: Path) -> list[Path]:
@@ -108,7 +108,7 @@ def main() -> int:
     args = parser.parse_args()
 
     root = args.root.resolve()
-    files = select_files(tracked_files(root), args.kind)
+    files = [path for path in select_files(tracked_files(root), args.kind) if (root / path).is_file()]
     if not files:
         print(f"no tracked {args.kind} files selected")
         return 0

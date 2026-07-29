@@ -1,0 +1,157 @@
+# ICS55 routing-only Magic technology derived from N551P6M_ecos.lef and the
+# commercial CX55 GDS layer map. It supports top-level metal connectivity LVS.
+tech
+ format 34
+ ics55
+end
+version
+ version 1.0
+ description "ICS55 manual routing connectivity technology"
+end
+planes
+ m1
+ m2
+ m3
+ m4
+ m5
+ tm
+ rdl
+end
+types
+ m1 MET1
+ m1 VIA1
+ m2 MET2
+ m2 VIA2
+ m3 MET3
+ m3 VIA3
+ m4 MET4
+ m4 VIA4
+ m5 MET5
+ m5 T4V2
+ tm T4M2
+ tm RV
+ rdl RDL
+end
+contact
+ VIA1 MET1 MET2
+ VIA2 MET2 MET3
+ VIA3 MET3 MET4
+ VIA4 MET4 MET5
+ T4V2 MET5 T4M2
+ RV T4M2 RDL
+end
+styles
+ styletype mos
+ MET1 metal1
+ VIA1 metal1 metal2 contact_X'es
+ MET2 metal2
+ VIA2 metal2 metal3 contact_X'es
+ MET3 metal3
+ VIA3 metal3 metal4 contact_X'es
+ MET4 metal4
+ VIA4 metal4 metal5 contact_X'es
+ MET5 metal5
+ T4V2 metal5 metal6 contact_X'es
+ T4M2 metal6
+ RV metal6 metal7 contact_X'es
+ RDL metal7
+end
+compose
+end
+connect
+ *MET1 *MET1
+ *MET2 *MET2
+ *MET3 *MET3
+ *MET4 *MET4
+ *MET5 *MET5
+ *T4M2 *T4M2
+ *RDL *RDL
+end
+cifinput
+ style import
+ scalefactor 1 nanometers
+ layer MET1 MET1
+ calma MET1 81 1
+ layer MET2 MET2
+ calma MET2 82 1
+ layer MET3 MET3
+ calma MET3 83 1
+ layer MET4 MET4
+ calma MET4 84 1
+ layer MET5 MET5
+ calma MET5 85 1
+ layer VIA1 VIA1
+ calma VIA1 91 1
+ layer VIA2 VIA2
+ calma VIA2 92 1
+ layer VIA3 VIA3
+ calma VIA3 93 1
+ layer VIA4 VIA4
+ calma VIA4 94 1
+ layer T4M2 T4M2
+ calma T4M2 103 1
+ layer T4V2 T4V2
+ calma T4V2 113 1
+ layer RV RV
+ calma RV 122 1
+ layer RDL RDL
+ calma RDL 123 1
+end
+drc
+end
+lef
+ routing MET1 MET1
+ contact VIA1 VIA1
+ routing MET2 MET2
+ contact VIA2 VIA2
+ routing MET3 MET3
+ contact VIA3 VIA3
+ routing MET4 MET4
+ contact VIA4 VIA4
+ routing MET5 MET5
+ contact T4V2 T4V2
+ routing T4M2 T4M2
+ contact RV RV
+ routing RDL RDL
+end
+extract
+ style default
+ planeorder m1 0
+ planeorder m2 1
+ planeorder m3 2
+ planeorder m4 3
+ planeorder m5 4
+ planeorder tm 5
+ planeorder rdl 6
+end
+cifoutput
+ style gdsii
+ scalefactor 1 nanometers
+ layer MET1 MET1
+ calma 81 1
+ layer MET2 MET2
+ calma 82 1
+ layer MET3 MET3
+ calma 83 1
+ layer MET4 MET4
+ calma 84 1
+ layer MET5 MET5
+ calma 85 1
+ layer VIA1 VIA1
+ calma 91 1
+ layer VIA2 VIA2
+ calma 92 1
+ layer VIA3 VIA3
+ calma 93 1
+ layer VIA4 VIA4
+ calma 94 1
+ layer T4M2 T4M2
+ calma 103 1
+ layer T4V2 T4V2
+ calma 113 1
+ layer RV RV
+ calma 122 1
+ layer RDL RDL
+ calma 123 1
+end
+

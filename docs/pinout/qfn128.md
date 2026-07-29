@@ -2,7 +2,7 @@
 
 Top view: P1 is the south-west corner; numbering proceeds counter-clockwise. QFN lead count excludes an exposed pad.
 
-| Pin | Side | Slot | Function | Direction | IHP cell | Core-facing signal |
+| Pin | Side | Slot | Function | Direction | PDK cell | Core-facing signal |
 |---|---|---:|---|---|---|---|
 | P1 | south | 1 | IOVDD | power | sg13g2_IOPadIOVdd | IOVDD |
 | P2 | south | 2 | mgmt_clk | input | sg13g2_IOPadIn | mgmt_clk_i |
