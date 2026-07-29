@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Compact single-domain PDN for standalone ICS55 H7CR smoke designs.
 
+# The 0.3 um rails and 0.2 um spacing satisfy the 0.18 um2 minimum enclosed
+# area while fitting the smallest 60%-utilization smoke cores.
 source $::env(SCRIPTS_DIR)/openroad/common/io.tcl
 source $::env(SCRIPTS_DIR)/openroad/common/set_global_connections.tcl
 
@@ -17,10 +19,10 @@ set_voltage_domain -name CORE -power VDD -ground VSS
 define_pdn_grid -name stdcell_grid -starts_with POWER -voltage_domains {CORE} \
     -pins {MET4 MET5}
 
-add_pdn_stripe -grid stdcell_grid -layer MET4 -width 1 -pitch 12 -offset 0.5 \
-    -spacing 5 -starts_with POWER -extend_to_core_ring
-add_pdn_stripe -grid stdcell_grid -layer MET5 -width 1 -pitch 12 -offset 0.5 \
-    -spacing 5 -starts_with POWER -extend_to_core_ring
+add_pdn_stripe -grid stdcell_grid -layer MET4 -width 0.3 -pitch 2 -offset 0.1 \
+    -spacing 0.2 -starts_with POWER -extend_to_core_ring
+add_pdn_stripe -grid stdcell_grid -layer MET5 -width 0.3 -pitch 2 -offset 0.1 \
+    -spacing 0.2 -starts_with POWER -extend_to_core_ring
 add_pdn_connect -grid stdcell_grid -layers {MET4 MET5}
 
 if {$::env(PDN_ENABLE_RAILS)} {
@@ -28,5 +30,5 @@ if {$::env(PDN_ENABLE_RAILS)} {
     add_pdn_connect -grid stdcell_grid -layers {MET1 MET4}
 }
 
-add_pdn_ring -grid stdcell_grid -layers {MET4 MET5} -widths {2 2} \
-    -spacings {1 1} -core_offsets {2 2} -connect_to_pads
+add_pdn_ring -grid stdcell_grid -layers {MET4 MET5} -widths {0.3 0.3} \
+    -spacings {0.2 0.2} -core_offsets {0.1 0.1} -connect_to_pads

@@ -69,13 +69,6 @@ def render_state(design_dir: Path) -> Path:
     return states[-1]
 
 
-def merge_metrics(state: Path, design_dir: Path) -> None:
-    state_metrics = json.loads(state.read_text())["metrics"]
-    metrics_path = design_dir / "runs" / RUN_TAG / "final" / "metrics.json"
-    final_metrics = json.loads(metrics_path.read_text())
-    metrics_path.write_text(json.dumps({**state_metrics, **final_metrics}, indent=2) + "\n")
-
-
 def generate_abstract_lef(design_dir: Path, top: str) -> Path:
     run_dir = design_dir / "runs" / RUN_TAG
     odb = run_dir / "final" / "odb" / f"{top}.odb"
@@ -133,8 +126,6 @@ def main() -> int:
         result = subprocess.run(command, cwd=design_dir)
         if result.returncode != 0:
             failures.append(design["name"])
-        else:
-            merge_metrics(state, design_dir)
 
     if not args.dry_run:
         report_command = [sys.executable, str(ROOT / "report_metrics.py"), "--write"]

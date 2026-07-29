@@ -20,19 +20,10 @@
     "VSS"
   ],
   "FP_SIZING": "absolute",
-  "DIE_AREA": [
-    0,
-    0,
-    96,
-    96
-  ],
-  "CORE_AREA": [
-    14,
-    14,
-    82,
-    82
-  ],
-  "PL_TARGET_DENSITY_PCT": 30,
+  "FP_ASPECT_RATIO": 1.4,
+  "FP_CORE_UTIL": 60,
+  "DIE_AREA": [0, 0, 14.8, 26.6],
+  "CORE_AREA": [2.4, 5.6, 12.4, 21.0],
   "GRT_ALLOW_CONGESTION": false,
   "PDN_CFG": "dir::../pdn.tcl",
   "PDN_ENABLE_GLOBAL_CONNECTIONS": true,
@@ -40,6 +31,12 @@
   "PDN_ENABLE_RAILS": true,
   "PDN_CORE_RING": true,
   "PDN_CORE_RING_CONNECT_TO_PADS": true,
+  "RUN_POST_GPL_DESIGN_REPAIR": false,
+  "RUN_CTS": false,
+  "RUN_POST_CTS_RESIZER_TIMING": false,
+  "RUN_POST_GRT_RESIZER_TIMING": false,
+  "DESIGN_REPAIR_BUFFER_INPUT_PORTS": false,
+  "DESIGN_REPAIR_BUFFER_OUTPUT_PORTS": false,
   "DRT_THREADS": 16,
   "DRT_OPT_ITERS": 8,
   "RUN_MAGIC_STREAMOUT": false,
