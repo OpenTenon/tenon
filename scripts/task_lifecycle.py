@@ -14,123 +14,7 @@ from engineering import required_ids
 from engineering_common import ROOT, execute, git, utc_now, validate_evidence, write_json
 from task_archive import archive_task, deploy_controller, expected_head, ownership_errors, verify_archive, verify_task_archive, worktrees
 from task_store import FileLease, TaskStore
-
-
-def repository_name(repo: Path) -> str:
-    url = git(repo,"remote","get-url","origin").decode().strip()
-    match = re.fullmatch(r"(?:git@github\.com:|https://github\.com/)([\w.-]+/[\w.-]+?)(?:\.git)?/?",url)
-    if not match:
-        raise ValueError("Delivery requires an explicitly configured GitHub origin")
-    return match[1]
-
-
-def command(repo: Path, *args: str) -> bytes:
-    return subprocess.check_output(["git","-C",str(repo),*args],stderr=subprocess.PIPE)
-
-
-class GitHub:
-    def __init__(self, repo: Path):
-        self.repo = repo.resolve()
-        self.name = repository_name(repo)
-        self.remote_url = git(repo,"remote","get-url","origin").decode().strip()
-
-    def api(self, endpoint: str, method: str = "GET", body: dict | None = None):
-        argv = ["gh","api",f"repos/{self.name}/{endpoint}","--method",method]
-        payload = None
-        if body is not None:
-            argv += ["--input","-"]
-            payload = json.dumps(body).encode()
-        result = subprocess.run(argv,input=payload,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,check=False)
-        if result.returncode:
-            raise RuntimeError(result.stderr.decode("utf-8",errors="replace")[-3000:])
-        return json.loads(result.stdout) if result.stdout.strip() else None
-
-    def assert_origin(self):
-        if repository_name(self.repo).lower()!=self.name.lower():
-            raise ValueError("Origin changed during delivery")
-
-    def refresh(self):
-        self.assert_origin()
-        command(self.repo,"-c","core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=15","fetch",self.remote_url,
-                "refs/heads/dev:refs/remotes/origin/dev","refs/heads/main:refs/remotes/origin/main")
-
-    def pull(self, number: int):
-        return self.api(f"pulls/{number}")
-
-    def find_pull(self, branch: str):
-        owner = self.name.split("/")[0]
-        items = self.api(f"pulls?state=all&head={owner}:{branch}&base=dev&per_page=100")
-        if len(items)>1:
-            open_items = [item for item in items if item["state"]=="open"]
-            if len(open_items)!=1:
-                raise ValueError("Ambiguous task PR history")
-            return open_items[0]
-        return items[0] if items else None
-
-    def create_pull(self, task: dict):
-        # On an ambiguous transport failure, resume searches this branch before retrying.
-        return self.api("pulls","POST",{"base":"dev","head":task["branch"],
-            "title":task.get("commit_title","build: "+task["task_id"]),
-            "body":task.get("pr_body",task["goal"]+"\n\nValidation: committed-candidate make verify. Main merging remains human."),"draft":False})
-
-    def latest_run(self, sha: str, event: str, number: int | None = None):
-        items = self.api(f"actions/runs?head_sha={sha}&event={event}&per_page=100")["workflow_runs"]
-        items = [item for item in items if item["path"].split("@")[0]==".github/workflows/ci.yml"]
-        if number is not None:
-            associated = [item for item in items if any(p["number"]==number for p in item.get("pull_requests",[]))]
-            detached = [item for item in items if not item.get("pull_requests")]
-            # GitHub can drop pull_requests from a run after its PR is merged.
-            # Recover the association only from a live, exact, same-repository PR.
-            if detached:
-                pull = self.pull(number)
-                head = pull.get("head",{})
-                if (pull.get("merged") and pull.get("base",{}).get("ref")=="dev"
-                        and head.get("sha")==sha
-                        and (head.get("repo") or {}).get("full_name","").lower()==self.name.lower()):
-                    associated += [item for item in detached if item.get("head_sha")==sha
-                        and item.get("head_branch")==head.get("ref")
-                        and (item.get("head_repository") or {}).get("full_name","").lower()==self.name.lower()]
-            items = associated
-        if not items:
-            return None
-        run = max(items,key=lambda item:(item["id"],item["run_attempt"]))
-        jobs, page = [], 1
-        while True:
-            response = self.api(f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100&page={page}")
-            jobs += response["jobs"]
-            if len(response["jobs"])<100:
-                break
-            page += 1
-        return {"workflow_run":run,"jobs":jobs}
-
-    def merge(self, number: int, sha: str):
-        return self.api(f"pulls/{number}/merge","PUT",{"sha":sha,"merge_method":"merge"})
-
-    def push(self, branch: str):
-        self.assert_origin()
-        command(self.repo,"-c","core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=15","push",self.remote_url,"refs/heads/"+branch+":refs/heads/"+branch)
-
-    def remote_head(self, branch: str):
-        self.assert_origin()
-        output = command(self.repo,"ls-remote","--heads",self.remote_url,"refs/heads/"+branch).decode().strip()
-        return output.split()[0] if output else None
-
-    def delete_remote(self, branch: str, head: str):
-        self.assert_origin()
-        command(self.repo,"push","--force-with-lease=refs/heads/"+branch+":"+head,
-                self.remote_url,":refs/heads/"+branch)
-
-    def diagnostics(self, snapshot: dict, directory: Path):
-        directory.mkdir(parents=True,exist_ok=True)
-        write_json(directory/"ci.json",snapshot)
-        failed = [job for job in snapshot["jobs"] if job.get("conclusion")=="failure"]
-        for job in failed:
-            result = subprocess.run(["gh","run","view",str(snapshot["workflow_run"]["id"]),"--repo",self.name,
-                                     "--job",str(job["id"]),"--log-failed"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,check=False,timeout=60)
-            (directory/(job["name"]+".log")).write_bytes(result.stdout)
-        # Per-command test failures are deliberately kept as artifacts by the verifier.
-        subprocess.run(["gh","run","download",str(snapshot["workflow_run"]["id"]),"--repo",self.name,
-                        "--dir",str(directory/"artifacts")],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False,timeout=60)
+from task_backends import GitHub, command, repository_name, directory_delete_ready, WorkspaceBackend
 
 
 def ci_green(snapshot: dict | None, sha: str, event: str) -> bool:
@@ -142,32 +26,6 @@ def ci_green(snapshot: dict | None, sha: str, event: str) -> bool:
             and run.get("conclusion")=="success" and (REQUIRED_JOBS|{"ci-required"}).issubset(set(names))
             and len(names)==len(set(names)) and all(item.get("status")=="completed" and item.get("conclusion")=="success"
                 and item.get("run_id")==run["id"] and item.get("run_attempt")==run["run_attempt"] for item in jobs))
-
-
-def directory_delete_ready(root: Path) -> bool:
-    """Probe Windows sharing permissions without changing or deleting the directory."""
-    if os.name!="nt" or not root.is_dir():
-        return True
-    import ctypes
-    from ctypes import wintypes
-    kernel = ctypes.WinDLL("kernel32",use_last_error=True)
-    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,wintypes.LPVOID,
-                                   wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
-    kernel.CreateFileW.restype = wintypes.HANDLE
-    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
-    kernel.CloseHandle.restype = wintypes.BOOL
-    # DELETE access, full sharing, OPEN_EXISTING and directory semantics only.
-    # No DELETE_ON_CLOSE, disposition change or privilege adjustment is used.
-    handle = kernel.CreateFileW(str(root),0x10000,7,None,3,0x02000000,None)
-    if handle==ctypes.c_void_p(-1).value:
-        error = ctypes.get_last_error()
-        if error in {2,3}:
-            return True
-        if error==32:
-            return False
-        raise ctypes.WinError(error)
-    kernel.CloseHandle(handle)
-    return True
 
 
 class Lifecycle:
@@ -208,11 +66,8 @@ class Lifecycle:
             except (ValueError,OSError,KeyError):
                 pass
         self.update("verification-intent",status="VERIFYING",head_sha=head)
-        argv = task.get("verify_command") or [sys.executable,"scripts/engineering.py","verify"]
-        posix = str(root).replace("\\","/")
-        if re.match(r"^[A-Za-z]:/",posix):
-            posix = "/mnt/"+posix[0].lower()+posix[2:]
-        argv = [arg.replace("{worktree}",str(root)).replace("{worktree_posix}",posix) for arg in argv]
+        from tenon import verification_argv
+        argv = verification_argv(task, root)
         result = execute(argv,root,self.operations()/"local-verify.log",timeout=1800,check_id="committed-candidate")
         if result["status"]!="PASS":
             self.update("verification-failed",status="NEEDS_ATTENTION",verification_failure=result)
@@ -228,7 +83,7 @@ class Lifecycle:
                 continue
         raise ValueError("Validation returned no source-matched full verification report")
 
-    def deliver(self) -> dict:
+    def deliver(self, *, allow_commit: bool = True, expected_candidate: str | None = None) -> dict:
         task = self.task()
         if task.get("status")=="CLEANED":
             return task
@@ -260,6 +115,11 @@ class Lifecycle:
         names = set(git(root,"diff","--name-only","-z","HEAD","--").split(b"\0"))
         names.update(git(root,"ls-files","--others","--exclude-standard","-z").split(b"\0"))
         names = sorted(item.decode() for item in names if item)
+        if not allow_commit:
+            if names:
+                raise ValueError("Unsubmitted edits appeared; background delivery never stages or commits them")
+            if git(root,"rev-parse","HEAD").decode().strip() != expected_candidate:
+                raise ValueError("Background candidate changed before delivery")
         if names:
             staged = git(root,"diff","--cached","--name-only").decode().splitlines()
             if set(staged)-set(names):
@@ -269,21 +129,35 @@ class Lifecycle:
             command(root,"-c","core.safecrlf=false","diff","--cached","--check")
             command(root,"commit","-m",task.get("commit_title","build: "+task["task_id"]),"-m","Tenon-Task: "+task["task_id"])
         head = git(root,"rev-parse","HEAD").decode().strip()
+        if not allow_commit and head != expected_candidate:
+            raise ValueError("Background candidate changed before preparation")
         if head==task["base_sha"]:
             raise ValueError("No task change to deliver")
         self.update("candidate-observed",head_sha=head)
         self.backend.refresh()
         base = git(root,"rev-parse","origin/dev").decode().strip()
         if not self._ancestor(base,head):
-            command(root,"merge","--no-edit","origin/dev")
+            intent = {"from_head":head,"dev_sha":base,"token":__import__("uuid").uuid4().hex}
+            self.update("base-merge-intent",base_merge_intent=intent)
+            command(root,"merge","--no-edit","-m","Merge current dev for Tenon task "+self.task_id+"\n\nTenon-Base-Merge: "+intent["token"],"origin/dev")
             head = git(root,"rev-parse","HEAD").decode().strip()
-            self.update("dev-integrated",base_sha=base,head_sha=head)
+            if not allow_commit:
+                parents = git(root,"show","-s","--format=%P",head).decode().split()
+                message = git(root,"show","-s","--format=%B",head).decode().splitlines()
+                if parents != [intent["from_head"],base] or "Tenon-Base-Merge: "+intent["token"] not in message:
+                    raise ValueError("Background merge differs from its recorded submitted head and dev base")
+            self.update("dev-integrated",base_sha=base,head_sha=head,base_merge_intent={**intent,"result_head":head})
         self.verification(self.task(),root,head)
+        if not allow_commit:
+            from engineering_common import source_state
+            state = source_state(root)
+            if state["dirty"] or state["sha"] != head:
+                raise ValueError("Source changed after background verification")
         remote = self.backend.remote_head(task["branch"])
         if remote!=head:
             if remote and not self._ancestor(remote,head):
                 raise ValueError("Remote task branch contains other work")
-            self.backend.push(task["branch"])
+            self.backend.push(task["branch"],head)
         self.update("push-observed",pushed_head=head)
         pull = self.backend.find_pull(task["branch"])
         if not pull:
@@ -364,6 +238,12 @@ class Lifecycle:
         errors = ownership_errors(self.store,task,absent_ok=bool(task.get("cleanup",{}).get("remote_deleted")))
         if errors:
             raise ValueError("; ".join(errors))
+        registered = any(item["path"] == root for item in worktrees(self.store.repo))
+        empty_remnant = root.is_dir() and not registered and not any(root.iterdir())
+        if task.get("cleanup", {}).get("remote_deleted") and task.get("archive") and (not root.exists() or empty_remnant):
+            # Git can remove its registration/files before a Windows directory lease blocks rmdir.
+            # Existing verified evidence is authoritative for finalization; no new archive is possible.
+            return self.finalize()
         archive_task(self.store,task)
         controller = deploy_controller(self.store,tip)
         primary = worktrees(self.store.repo)[0]["path"]
@@ -384,25 +264,15 @@ class Lifecycle:
             if remaining:
                 raise ValueError("; ".join(remaining))
             archive_task(self.store,self.task())
-            if task.get("managed_identity"):
-                return {"status":"NEEDS_APP_ARCHIVE","root":task["managed_identity"],"controller":str(controller),"repo":str(primary),"task_id":self.task_id}
-            command(primary,"worktree","remove",str(root))
+            result = WorkspaceBackend.remove(primary, task, controller, runner=command)
+            if result:
+                return result
         return self.finalize()
 
     def native_archive_record(self, receipt: Path) -> dict:
         task = self.task()
-        identity = task.get("managed_identity")
         primary = worktrees(self.store.repo)[0]["path"]
-        record = json.loads(receipt.read_text(encoding="utf-8"))
-        payload = record.get("payload") if isinstance(record,dict) else None
-        workspace = payload.get("worktree") if isinstance(payload,dict) else None
-        if (not identity or not isinstance(workspace,dict) or record.get("attachmentType")!="archived_worktree"
-                or record.get("identityKey")!=identity or workspace.get("root")!=identity
-                or workspace.get("hostId")!=task.get("managed_host_id","local")
-                or not isinstance(workspace.get("sourceGitRoot"),str) or not workspace["sourceGitRoot"]
-                or Path(workspace["sourceGitRoot"]).resolve()!=primary):
-            raise ValueError("Native archive receipt does not match this task/repository/host")
-        return record
+        return WorkspaceBackend.native_receipt(task, receipt, primary)
 
     def complete_app_cleanup(self, receipt: Path) -> dict:
         """Host-adapter recovery after a confirmed native archive was interrupted."""
@@ -430,7 +300,7 @@ class Lifecycle:
             raise ValueError("; ".join(errors))
         archive_task(self.store,task)
         # Native archiving already retained its recovery record. Never force removal.
-        command(primary,"worktree","remove",str(root))
+        WorkspaceBackend.remove(primary, task, Path(task["controller"]), native_confirmed=True, runner=command)
         return self.finalize()
 
     def wait_app_cleanup(self, receipt: Path, wait_seconds: float, poll_seconds: float = 30) -> dict:
@@ -546,7 +416,7 @@ def main():
             print(json.dumps(TaskStore(args.repo).load(args.id),indent=2,ensure_ascii=False))
             return 0
         lifecycle = Lifecycle(args.repo,args.id)
-        with FileLease(lifecycle.store.root/"locks"/(args.id+"-controller.lock")):
+        with FileLease(lifecycle.store.root/"locks/integration.lock"), FileLease(lifecycle.store.root/"locks"/(args.id+"-controller.lock")):
             if args.action in {"deliver","resume"}:
                 result = lifecycle.deliver()
             elif args.action=="wait-app-cleanup":
