@@ -9,6 +9,7 @@ import re
 import socket
 import time
 import uuid
+import math
 from contextlib import contextmanager
 from pathlib import Path
 from engineering_common import git, utc_now, write_json
@@ -52,43 +53,98 @@ class FileLease:
         self.token = uuid.uuid4().hex
 
     def __enter__(self):
+        if not math.isfinite(self.timeout) or self.timeout < 0:
+            raise ValueError("Lease timeout must be finite and nonnegative")
+        self.handle = None
         self.path.parent.mkdir(parents=True,exist_ok=True)
-        self.path.touch(exist_ok=True)
-        self.handle = self.path.open("r+b")
-        if self.path.stat().st_size==0:
-            self.handle.write(b"\n");self.handle.flush()
-        started = time.monotonic()
-        while True:
+        descriptor = os.open(self.path, os.O_RDWR | os.O_CREAT | getattr(os,"O_BINARY",0), 0o600)
+        try:
             try:
-                self.handle.seek(0)
-                if os.name=="nt":
-                    import msvcrt
-                    msvcrt.locking(self.handle.fileno(),msvcrt.LK_NBLCK,1)
-                else:
-                    import fcntl
-                    fcntl.flock(self.handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
-                break
-            except OSError:
-                if time.monotonic()-started>=self.timeout:
-                    self.handle.close()
-                    raise TimeoutError("Task lock is busy: "+str(self.path))
-                time.sleep(0.025)
-        value = {"token":self.token,"pid":os.getpid(),"host":socket.gethostname(),
-                 "platform":os.name,"kind":self.kind,"created_at":utc_now()}
-        self.handle.seek(0)
-        self.handle.write(b"\n"+json.dumps(value).encode("utf-8"))
-        self.handle.truncate();self.handle.flush();os.fsync(self.handle.fileno())
-        return self
+                self.handle = os.fdopen(descriptor,"r+b",buffering=0)
+            except BaseException:
+                os.close(descriptor)
+                raise
+            started = time.monotonic()
+            while True:
+                try:
+                    _native_lock(self.handle)
+                    break
+                except OSError:
+                    if time.monotonic()-started>=self.timeout:
+                        raise TimeoutError("Task lock is busy: "+str(self.path))
+                    time.sleep(0.025)
+            # Windows permits a byte lock beyond EOF. The first writer locks an
+            # empty file; no contender seeds/truncates it before owning the lock.
+            value = {"token":self.token,"pid":os.getpid(),"host":socket.gethostname(),
+                     "platform":os.name,"kind":self.kind,"created_at":utc_now()}
+            self.handle.seek(0)
+            self.handle.write(b"\n"+json.dumps(value).encode("utf-8"))
+            self.handle.truncate();self.handle.flush();os.fsync(self.handle.fileno())
+            return self
+        except BaseException:
+            if self.handle is not None:
+                self.handle.close()
+            raise
 
     def __exit__(self, *_):
-        self.handle.seek(0)
-        if os.name=="nt":
-            import msvcrt
-            msvcrt.locking(self.handle.fileno(),msvcrt.LK_UNLCK,1)
-        else:
-            import fcntl
-            fcntl.flock(self.handle.fileno(),fcntl.LOCK_UN)
-        self.handle.close()
+        if self.handle is None or self.handle.closed:
+            return
+        try:
+            _native_unlock(self.handle)
+        finally:
+            self.handle.close()
+
+
+def _native_lock(handle):
+    handle.seek(0)
+    if os.name=="nt":
+        import msvcrt
+        msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+
+
+def _native_unlock(handle):
+    handle.seek(0)
+    if os.name=="nt":
+        import msvcrt
+        msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
+
+
+def lease_is_held(path: Path) -> bool:
+    """Probe the registered native host without creating or rewriting metadata.
+
+    True means held or inaccessible; it is not a claim that a particular PID is
+    alive. Native lock namespaces must not be compared between Windows and WSL.
+    """
+    try:
+        descriptor = os.open(path,os.O_RDWR|getattr(os,"O_BINARY",0))
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    handle = None
+    try:
+        try:
+            handle = os.fdopen(descriptor,"r+b",buffering=0)
+        except BaseException:
+            os.close(descriptor)
+            raise
+        try:
+            _native_lock(handle)
+            _native_unlock(handle)
+            return False
+        except OSError:
+            return True
+    except OSError:
+        return True
+    finally:
+        if handle is not None:
+            handle.close()
 
 
 class TaskStore:
