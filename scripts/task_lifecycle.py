@@ -362,26 +362,36 @@ class Lifecycle:
             command(primary,"worktree","remove",str(root))
         return self.finalize()
 
-    def complete_app_cleanup(self, receipt: Path) -> dict:
-        """Host-adapter recovery after a confirmed native archive was interrupted."""
+    def native_archive_record(self, receipt: Path) -> dict:
         task = self.task()
         identity = task.get("managed_identity")
-        root = Path(task["worktree"]).resolve()
         primary = worktrees(self.store.repo)[0]["path"]
-        if not identity or Path.cwd().resolve().is_relative_to(root) or Path(__file__).resolve().is_relative_to(root):
-            raise ValueError("Native recovery needs a managed task and an external executor")
         record = json.loads(receipt.read_text(encoding="utf-8"))
         payload = record.get("payload") if isinstance(record,dict) else None
         workspace = payload.get("worktree") if isinstance(payload,dict) else None
-        if (not isinstance(workspace,dict) or record.get("attachmentType")!="archived_worktree" or record.get("identityKey")!=identity
-                or workspace.get("root")!=identity or workspace.get("hostId")!=task.get("managed_host_id","local")
+        if (not identity or not isinstance(workspace,dict) or record.get("attachmentType")!="archived_worktree"
+                or record.get("identityKey")!=identity or workspace.get("root")!=identity
+                or workspace.get("hostId")!=task.get("managed_host_id","local")
                 or not isinstance(workspace.get("sourceGitRoot"),str) or not workspace["sourceGitRoot"]
                 or Path(workspace["sourceGitRoot"]).resolve()!=primary):
             raise ValueError("Native archive receipt does not match this task/repository/host")
+        return record
+
+    def complete_app_cleanup(self, receipt: Path) -> dict:
+        """Host-adapter recovery after a confirmed native archive was interrupted."""
+        task = self.task()
+        root = Path(task["worktree"]).resolve()
+        primary = worktrees(self.store.repo)[0]["path"]
+        if Path.cwd().resolve().is_relative_to(root) or Path(__file__).resolve().is_relative_to(root):
+            raise ValueError("Native recovery needs an external executor")
+        record = self.native_archive_record(receipt)
         # This is an adapter receipt from list_artifacts, not permission to skip gates.
         saved = self.operations()/"app-archive-receipt.json"
         write_json(saved,record)
         self.update("native-archive-confirmed",app_archive_receipt=str(saved))
+        registered = any(item["path"]==root for item in worktrees(self.store.repo))
+        if not root.exists() or (not registered and root.is_dir() and not any(root.iterdir())):
+            return self.finalize()
         result = self.cleanup()
         if result["status"]=="CLEANED":
             return result
@@ -406,13 +416,19 @@ class Lifecycle:
             raise ValueError("; ".join(errors))
         if not task.get("cleanup",{}).get("remote_deleted"):
             raise ValueError("Remote deletion checkpoint is missing")
-        if root.exists() or any(item["path"]==root for item in worktrees(self.store.repo)):
+        registered = any(item["path"]==root for item in worktrees(self.store.repo))
+        empty_remnant = root.is_dir() and not any(root.iterdir()) and not registered
+        if registered or (root.exists() and not empty_remnant):
             raise ValueError("Worktree removal is not confirmed")
         verify_task_archive(self.store,task)
         self.backend.refresh()
         tip = git(self.store.repo,"rev-parse","origin/dev").decode().strip()
-        if not self._ancestor(expected_head(task),tip) or not ci_green(self.backend.latest_run(tip,"push"),tip,"push"):
-            raise ValueError("Green dev ancestry changed before finalization")
+        pull = self.backend.pull(task["delivery"]["number"])
+        pr_ci = self.backend.latest_run(expected_head(task),"pull_request",pull["number"])
+        if (not pull.get("merged") or pull["base"]["ref"]!="dev" or pull["head"]["sha"]!=expected_head(task)
+                or not ci_green(pr_ci,expected_head(task),"pull_request")
+                or not self._ancestor(expected_head(task),tip) or not ci_green(self.backend.latest_run(tip,"push"),tip,"push")):
+            raise ValueError("Live merged PR/CI and green dev ancestry are required before finalization")
         if self.backend.remote_head(task["branch"]):
             raise ValueError("Remote branch still exists")
         if any(item.get("branch")=="refs/heads/"+task["branch"] for item in worktrees(self.store.repo)):
@@ -422,6 +438,14 @@ class Lifecycle:
         if result.returncode==0:
             if result.stdout.decode().strip()!=expected_head(task):
                 raise ValueError("Local branch advanced; conditional deletion refused")
+        if empty_remnant:
+            if task.get("managed_identity"):
+                if not task.get("app_archive_receipt"):
+                    raise ValueError("Empty managed remnant requires its native archive receipt")
+                self.native_archive_record(Path(task["app_archive_receipt"]))
+            # rmdir is non-recursive and atomically refuses new files or busy directories.
+            root.rmdir()
+        if result.returncode==0:
             command(self.store.repo,"update-ref","-d",ref,expected_head(task))
         tracking = "refs/remotes/origin/"+task["branch"]
         result = subprocess.run(["git","-C",str(self.store.repo),"rev-parse","--verify",tracking],stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False)
@@ -468,7 +492,10 @@ def main():
                 lifecycle.update("operation-blocked",last_error=str(error),blocked_at=utc_now())
             except (OSError,ValueError):
                 pass
-        print(json.dumps({"status":"BLOCKED","reason":str(error)}))
+        reason = str(error)
+        if isinstance(error,subprocess.CalledProcessError) and error.stderr:
+            reason += ": "+error.stderr.decode("utf-8",errors="replace")[-2000:]
+        print(json.dumps({"status":"BLOCKED","reason":reason}))
         return 2
 
 

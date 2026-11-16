@@ -299,6 +299,54 @@ class ArchiveAndCleanupTests(OwnedWorktreeFixture):
         self.assertEqual(self.controller.complete_app_cleanup(receipt)["status"],"CLEANED")
         self.assertEqual(self.backend.deleted,1)
 
+    def empty_native_remnant(self):
+        receipt,_ = self.native_receipt()
+        self.controller.cleanup()
+        self.run_git("worktree","remove",str(self.owned))
+        self.owned.mkdir()
+        return receipt
+
+    def test_empty_unregistered_native_remnant_finishes_nonrecursively(self):
+        receipt = self.empty_native_remnant()
+        self.assertEqual(self.controller.complete_app_cleanup(receipt)["status"],"CLEANED")
+        self.assertFalse(self.owned.exists())
+        self.assertEqual(self.backend.deleted,1)
+
+    def test_busy_empty_remnant_keeps_refs_and_can_resume(self):
+        receipt = self.empty_native_remnant()
+        original = Path.rmdir
+        def busy(path,*args,**kwargs):
+            if path==self.owned:
+                raise PermissionError("directory busy")
+            return original(path,*args,**kwargs)
+        with mock.patch.object(Path,"rmdir",busy),self.assertRaises(PermissionError):
+            self.controller.complete_app_cleanup(receipt)
+        self.assertTrue(self.owned.exists())
+        self.assertEqual(self.run_git("rev-parse","dev-owned-v2").decode().strip(),self.head)
+        self.assertEqual(self.controller.complete_app_cleanup(receipt)["status"],"CLEANED")
+
+    def test_empty_remnant_rechecks_original_pr_ci_before_removal(self):
+        receipt = self.empty_native_remnant()
+        original = self.backend.latest_run
+        def failed(sha,event,number=None):
+            result = original(sha,event,number)
+            if event=="pull_request":
+                result["workflow_run"]["conclusion"]="failure"
+            return result
+        self.backend.latest_run = failed
+        with self.assertRaises(ValueError):
+            self.controller.complete_app_cleanup(receipt)
+        self.assertTrue(self.owned.exists())
+        self.assertEqual(self.run_git("rev-parse","dev-owned-v2").decode().strip(),self.head)
+
+    def test_new_files_in_unregistered_remnant_are_preserved(self):
+        receipt = self.empty_native_remnant()
+        (self.owned/"new-user-work.txt").write_text("retain",encoding="utf-8")
+        with self.assertRaises((ValueError,subprocess.CalledProcessError)):
+            self.controller.complete_app_cleanup(receipt)
+        self.assertEqual((self.owned/"new-user-work.txt").read_text(),"retain")
+        self.assertEqual(self.run_git("rev-parse","dev-owned-v2").decode().strip(),self.head)
+
     def test_remote_tip_change_refuses_deletion(self):
         self.backend.remote = "e"*40
         with self.assertRaises(ValueError):
