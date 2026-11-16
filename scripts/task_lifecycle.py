@@ -418,7 +418,8 @@ class Lifecycle:
             raise ValueError("Remote deletion checkpoint is missing")
         registered = any(item["path"]==root for item in worktrees(self.store.repo))
         empty_remnant = root.is_dir() and not any(root.iterdir()) and not registered
-        if registered or (root.exists() and not empty_remnant):
+        missing_registration = registered and not root.exists()
+        if (registered and not missing_registration) or (root.exists() and not empty_remnant):
             raise ValueError("Worktree removal is not confirmed")
         verify_task_archive(self.store,task)
         self.backend.refresh()
@@ -431,20 +432,25 @@ class Lifecycle:
             raise ValueError("Live merged PR/CI and green dev ancestry are required before finalization")
         if self.backend.remote_head(task["branch"]):
             raise ValueError("Remote branch still exists")
-        if any(item.get("branch")=="refs/heads/"+task["branch"] for item in worktrees(self.store.repo)):
+        if any(item.get("branch")=="refs/heads/"+task["branch"] and item["path"]!=root for item in worktrees(self.store.repo)):
             raise ValueError("Task branch is checked out elsewhere")
         ref = "refs/heads/"+task["branch"]
         result = subprocess.run(["git","-C",str(self.store.repo),"rev-parse","--verify",ref],stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False)
         if result.returncode==0:
             if result.stdout.decode().strip()!=expected_head(task):
                 raise ValueError("Local branch advanced; conditional deletion refused")
+        if (missing_registration or empty_remnant) and task.get("managed_identity"):
+            if not task.get("app_archive_receipt"):
+                raise ValueError("Managed remnants require their native archive receipt")
+            self.native_archive_record(Path(task["app_archive_receipt"]))
+        if missing_registration:
+            # Reconcile only this owned entry; never prune other worktrees or force.
+            command(self.store.repo,"worktree","remove",str(root))
         if empty_remnant:
-            if task.get("managed_identity"):
-                if not task.get("app_archive_receipt"):
-                    raise ValueError("Empty managed remnant requires its native archive receipt")
-                self.native_archive_record(Path(task["app_archive_receipt"]))
             # rmdir is non-recursive and atomically refuses new files or busy directories.
             root.rmdir()
+        if root.exists() or any(item["path"]==root for item in worktrees(self.store.repo)):
+            raise ValueError("Worktree directory/registration is still present")
         if result.returncode==0:
             command(self.store.repo,"update-ref","-d",ref,expected_head(task))
         tracking = "refs/remotes/origin/"+task["branch"]

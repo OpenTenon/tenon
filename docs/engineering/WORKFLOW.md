@@ -108,6 +108,11 @@ Do not restore an interrupted snapshot over remaining files or modify app record
 If Git already removed its registration but left an empty directory, the same
 recovery entry rechecks the archive, receipt, live CI and local ref before ordinary
 non-recursive rmdir. A new file or an OS lock blocks it without deleting local refs.
+If the checkout is gone while its exact unlocked Git entry remains, recovery uses
+`git worktree remove` for only that entry, after the same receipt, evidence and CI
+gates. No global prune or direct metadata deletion is allowed. Before cleanup,
+move owned idle terminals out of the target or close them after preserving output.
+Never stop active commands or unrelated sessions to clear an OS sharing violation.
 
 Only registered dev-* task resources qualify. Protect primary, shared, locked or
 active worktrees, dev/main/default refs, changed tips and dirty source. Exact-head

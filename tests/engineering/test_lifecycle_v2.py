@@ -306,6 +306,27 @@ class ArchiveAndCleanupTests(OwnedWorktreeFixture):
         self.owned.mkdir()
         return receipt
 
+    def test_native_missing_checkout_reconciles_only_its_owned_registration(self):
+        import shutil
+        receipt,_ = self.native_receipt()
+        self.controller.cleanup()
+        shutil.rmtree(self.owned)
+        self.assertIn(str(self.owned).replace("\\","/"),self.run_git("worktree","list","--porcelain").decode())
+        self.assertEqual(self.controller.complete_app_cleanup(receipt)["status"],"CLEANED")
+        self.assertNotIn("dev-owned-v2",self.run_git("worktree","list","--porcelain").decode())
+        self.assertTrue(self.root.exists())
+
+    def test_locked_missing_native_registration_is_preserved(self):
+        import shutil
+        receipt,_ = self.native_receipt()
+        self.controller.cleanup()
+        self.run_git("worktree","lock",str(self.owned))
+        shutil.rmtree(self.owned)
+        with self.assertRaises(ValueError):
+            self.controller.complete_app_cleanup(receipt)
+        self.assertIn("locked",self.run_git("worktree","list","--porcelain").decode())
+        self.assertEqual(self.run_git("rev-parse","dev-owned-v2").decode().strip(),self.head)
+
     def test_empty_unregistered_native_remnant_finishes_nonrecursively(self):
         receipt = self.empty_native_remnant()
         self.assertEqual(self.controller.complete_app_cleanup(receipt)["status"],"CLEANED")

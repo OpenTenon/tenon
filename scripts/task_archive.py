@@ -63,8 +63,9 @@ def ownership_errors(store: TaskStore, task: dict, absent_ok: bool = False) -> l
                     errors.append("Initialized submodule is protected")
     elif not absent_ok:
         errors.append("Worktree is missing")
-    elif matches:
-        errors.append("Missing worktree still has a Git registration")
+    elif matches and (len(matches)!=1 or matches[0].get("branch")!="refs/heads/"+branch
+                      or matches[0].get("HEAD")!=expected_head(task) or "locked" in matches[0]):
+        errors.append("Missing worktree registration has changed or is locked")
     for value in store.all():
         if value["task_id"]!=task["task_id"] and value.get("status")!="CLEANED" and Path(value["worktree"]).resolve()==root:
             errors.append("Another task owns the worktree")
