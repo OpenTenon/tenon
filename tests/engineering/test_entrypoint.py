@@ -32,6 +32,7 @@ class Backend:
 class EntryTests(RepositoryFixture):
     def setUp(self):
         super().setUp()
+        self.root = self.root.resolve()
         self.addCleanup(self.remove_workspaces)
 
     def remove_workspaces(self):
