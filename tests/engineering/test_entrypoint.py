@@ -88,8 +88,15 @@ class EntryTests(RepositoryFixture):
     def test_registered_external_verifier_is_actually_executed(self):
         command = [sys.executable, "-c", "from pathlib import Path; Path('build').mkdir(exist_ok=True); Path('build/selected-verifier').write_text('ran')"]
         value = self.start(verify_command=command)
-        self.assertEqual(tenon.main(["--repo", str(self.root), "task", "verify", "--id", "entry"]), 0)
+        output = io.StringIO()
+        with mock.patch.object(tenon, "GitHub", side_effect=AssertionError("Local verification must not construct GitHub")), contextlib.redirect_stdout(output):
+            self.assertEqual(tenon.main(["--repo", str(self.root), "task", "verify", "--id", "entry"]), 2)
         self.assertEqual((Path(value["worktree"]) / "build/selected-verifier").read_text(), "ran")
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("no source-matched full verification report", result["reason"])
+        self.assertNotEqual(TaskStore(self.root).load("entry").get("verified_head"),
+                            self.run_git("rev-parse", "HEAD").decode().strip())
 
     def test_transport_failure_returns_structured_blocker(self):
         output = io.StringIO()

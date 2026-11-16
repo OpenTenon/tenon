@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -53,13 +54,27 @@ def run(repo: Path, max_seconds: float = 900, interval: float = 25) -> dict:
         raise ValueError("Worker bounds must be positive, at most 1200/300 seconds")
     store = TaskStore(repo)
     started = time.monotonic()
-    with FileLease(store.root / "locks/worker.lock", timeout=0):
+    with FileLease(store.root / "locks/worker.lock", timeout=0) as lease:
+        code = Path(__file__).resolve().parents[1]
+        commit = code.name if code.parent == (store.root / "controllers").resolve() and re.fullmatch(r"[0-9a-f]{40}", code.name) else None
+        identity = {"pid": os.getpid(), "host_platform": os.name, "repo_id": store.repo_id,
+                    "lease_token": lease.token, "controller_commit": commit}
+        write_json(store.root / "operations/worker-latest.json", {**identity, "state": "STARTING", "tasks": [], "at": utc_now()})
         while True:
             enabled = configuration(store)["enabled"]
             value = reconcile(repo, apply=enabled)
-            value.update(pid=os.getpid(), host_platform=os.name, enabled=enabled, completed_at=utc_now())
+            value.update(**identity, enabled=enabled, completed_at=utc_now())
             write_json(store.root / "operations/worker-latest.json", value)
             pending = any(item["state"] in {"WAITING", "BACKOFF", "QUEUED"} for item in value["tasks"])
+            if enabled and not pending:
+                try:
+                    from maintenance import run_due
+                    upkeep = run_due(repo)
+                    value["maintenance"] = {name: upkeep.get(name) for name in ("status", "report", "next_attempt_at")}
+                except (OSError, ValueError, KeyError, RuntimeError, ImportError, subprocess.SubprocessError) as error:
+                    value["maintenance"] = {"status": "BLOCKED", "reason": str(error)}
+                    write_json(store.root / "operations/maintenance-error.json", {**value["maintenance"], "at": utc_now()})
+                write_json(store.root / "operations/worker-latest.json", value)
             remaining = max_seconds - (time.monotonic() - started)
             if not enabled or not pending or remaining <= 0:
                 return value

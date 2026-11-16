@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from ci_gate import REQUIRED_JOBS, check_dev_delivery
 from engineering import required_ids
-from engineering_common import ROOT, execute, git, utc_now, validate_evidence, write_json
+from engineering_common import ROOT, digest, execute, git, utc_now, validate_evidence, write_json
 from task_archive import archive_task, deploy_controller, expected_head, ownership_errors, verify_archive, verify_task_archive, worktrees
 from task_store import FileLease, TaskStore
 from task_backends import GitHub, command, repository_name, directory_delete_ready, WorkspaceBackend
@@ -59,6 +59,8 @@ class Lifecycle:
         return path
 
     def verification(self, task: dict, root: Path, head: str):
+        from host_profile import validate_task_inputs
+        validate_task_inputs(task)
         if task.get("verified_head")==head:
             try:
                 validate_evidence(Path(task["verification_report"]),root,required_ids("all"))
@@ -83,7 +85,69 @@ class Lifecycle:
                 continue
         raise ValueError("Validation returned no source-matched full verification report")
 
+    def acceptance(self, task: dict, root: Path, head: str):
+        """Mandatory full verification plus explicitly executed task-specific argv."""
+        if task.get("kind") != "engineering":
+            return
+        from task_contract import (acceptance_commands, acceptance_errors, contract_digest,
+                                   extra_acceptance_commands, output_observations)
+        from engineering_common import new_summary, finish_summary, source_state
+        from tenon import verification_argv
+        if not acceptance_errors(task, root):
+            return
+        extras = extra_acceptance_commands(task)
+        info = None
+        if extras:
+            summary = new_summary(root, "task-acceptance")
+            summary.update(task_id=self.task_id, contract_sha256=contract_digest(task))
+            path = root / "build/verification" / summary["run_id"] / "summary.json"
+            for index, argv in enumerate(extras):
+                summary["checks"].append(execute(verification_argv({"verify_command": argv}, root), root,
+                    path.parent / ("acceptance-" + str(index) + ".log"), timeout=1800,
+                    check_id="acceptance-" + str(index)))
+            finish_summary(summary, root, path)
+            if summary["status"] != "PASS":
+                self.update("acceptance-failed", status="NEEDS_ATTENTION", acceptance_failure=str(path))
+                raise ValueError("Declared acceptance command failed or changed source: " + str(path))
+            info = {"path": str(path), "sha256": digest(path)}
+        outputs, errors = output_observations(task, root)
+        if errors:
+            self.update("acceptance-output-failed", status="NEEDS_ATTENTION", blockers=errors)
+            raise ValueError("; ".join(errors))
+        state = source_state(root)
+        if state["sha"] != head:
+            raise ValueError("Acceptance candidate changed")
+        record = {"schema_version": 1, "source": state, "contract_sha256": contract_digest(task),
+                  "commands": acceptance_commands(task["checks"]), "outputs": outputs, "report": info,
+                  "full_verification_sha256": digest(Path(task["verification_report"]))}
+        current = self.update("acceptance-qualified", acceptance=record)
+        errors = acceptance_errors(current, root)
+        if errors:
+            raise ValueError("; ".join(errors))
+
     def deliver(self, *, allow_commit: bool = True, expected_candidate: str | None = None) -> dict:
+        task = self.task()
+        if task.get("kind") != "engineering":
+            return self._deliver(allow_commit=allow_commit, expected_candidate=expected_candidate)
+        if task.get("host_platform") != os.name:
+            raise ValueError("Use the registered lifecycle host Git implementation")
+        if task.get("delivery_mode") == "local-only" or task.get("role") not in {"writer", "integrator"}:
+            raise ValueError("Read-only/local-only tasks cannot enter automatic delivery")
+        if task.get("status") == "CLEANED" or task.get("delivery", {}).get("merged"):
+            return self._deliver(allow_commit=allow_commit, expected_candidate=expected_candidate)
+        from task_contract import set_lease_state
+        owner = task["owner_id"]
+        set_lease_state(self.store, self.task_id, "active", owner_id=owner, role="integrator")
+        try:
+            return self._deliver(allow_commit=allow_commit, expected_candidate=expected_candidate)
+        finally:
+            current = self.task()
+            lease = current.get("execution_lease", {})
+            if lease.get("state") == "active" and lease.get("role") == "integrator":
+                state = "completed" if current.get("delivery", {}).get("merged") else "paused"
+                set_lease_state(self.store, self.task_id, state, owner_id=owner)
+
+    def _deliver(self, *, allow_commit: bool = True, expected_candidate: str | None = None) -> dict:
         task = self.task()
         if task.get("status")=="CLEANED":
             return task
@@ -147,7 +211,17 @@ class Lifecycle:
                 if parents != [intent["from_head"],base] or "Tenon-Base-Merge: "+intent["token"] not in message:
                     raise ValueError("Background merge differs from its recorded submitted head and dev base")
             self.update("dev-integrated",base_sha=base,head_sha=head,base_merge_intent={**intent,"result_head":head})
+        if task.get("kind") == "engineering":
+            from task_contract import integration_errors
+            errors = integration_errors(self.store, self.task(), current_dev=base)
+            if errors:
+                raise ValueError("; ".join(errors))
         self.verification(self.task(),root,head)
+        if task.get("kind") == "engineering":
+            self.acceptance(self.task(), root, head)
+            errors = integration_errors(self.store, self.task(), current_dev=base, require_evidence=True)
+            if errors:
+                raise ValueError("; ".join(errors))
         if not allow_commit:
             from engineering_common import source_state
             state = source_state(root)
@@ -184,6 +258,11 @@ class Lifecycle:
         latest_base = git(root,"rev-parse","origin/dev").decode().strip()
         if latest_base!=base or fresh["head"]["sha"]!=head or fresh["base"]["ref"]!="dev":
             return {"status":"WAITING_CI","reason":"Candidate/base changed; resume to integrate and recheck"}
+        if task.get("kind") == "engineering":
+            from task_contract import integration_errors
+            errors = integration_errors(self.store, self.task(), current_dev=latest_base, require_evidence=True)
+            if errors:
+                raise ValueError("; ".join(errors))
         self.update("merge-intent",status="MERGING",pr_ci={"run_id":snapshot["workflow_run"]["id"],"head_sha":head,"conclusion":"success"})
         self.backend.merge(pull["number"],head)
         merged = self.backend.pull(pull["number"])
@@ -197,12 +276,18 @@ class Lifecycle:
 
     def after_merge(self) -> dict:
         task = self.task()
+        if task.get("kind") == "engineering" and task.get("host_platform") != os.name:
+            raise ValueError("Use the registered lifecycle host Git implementation")
         self.backend.refresh()
         tip = git(self.store.repo,"rev-parse","origin/dev").decode().strip()
         pull = self.backend.pull(task["delivery"]["number"])
         head = expected_head(task)
         if not pull.get("merged") or pull["base"]["ref"]!="dev" or pull["head"]["sha"]!=head or not self._ancestor(head,tip):
             raise ValueError("Task merge/ancestry no longer matches")
+        if task.get("kind") == "engineering" and task.get("execution_lease", {}).get("state") != "completed":
+            from task_contract import set_lease_state
+            set_lease_state(self.store, self.task_id, "completed", owner_id=task["owner_id"])
+            task = self.task()
         pr_snapshot = self.backend.latest_run(head,"pull_request",pull["number"])
         if not ci_green(pr_snapshot,head,"pull_request"):
             self.update("pr-ci-unconfirmed",status="NEEDS_ATTENTION")
@@ -416,6 +501,8 @@ def main():
             print(json.dumps(TaskStore(args.repo).load(args.id),indent=2,ensure_ascii=False))
             return 0
         lifecycle = Lifecycle(args.repo,args.id)
+        if lifecycle.task().get("host_platform") != os.name:
+            raise ValueError("Use the registered lifecycle host Git implementation")
         with FileLease(lifecycle.store.root/"locks/integration.lock"), FileLease(lifecycle.store.root/"locks"/(args.id+"-controller.lock")):
             if args.action in {"deliver","resume"}:
                 result = lifecycle.deliver()

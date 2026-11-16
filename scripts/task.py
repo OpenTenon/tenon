@@ -14,6 +14,9 @@ from pathlib import Path
 from engineering import required_ids
 from engineering_common import ROOT, digest, git, source_state, utc_now, validate_evidence, write_json
 from task_store import TaskStore, activity_blockers
+from task_contract import (Allocation, READERS, allocation_lock, changed_path_errors,
+                           contract_errors, handoff_contract, register_task, set_lease_state,
+                           acceptance_errors, extra_acceptance_commands, acceptance_commands)
 
 
 def task_path(identifier: str, root: Path = ROOT) -> Path:
@@ -27,18 +30,34 @@ def changed_paths(root: Path, base: str) -> list[str]:
 
 
 def scope_errors(task: dict, root: Path) -> list[str]:
+    if task.get("kind") == "engineering":
+        if task.get("role") in READERS:
+            return contract_errors(task) + ([] if source_state(root) == task.get("analysis_source")
+                                            else ["Frozen analysis source changed"])
+        return contract_errors(task) + changed_path_errors(task, root, changed_paths(root, task["base_sha"]))
     return [name for name in changed_paths(root, task["base_sha"])
             if not any(fnmatch.fnmatchcase(name, pattern) for pattern in task["allowed_paths"])]
 
 
-def start(identifier: str, goal: str, allowed: list[str], checks: list[str], dependencies: list[str], root: Path = ROOT, managed_identity: str | None = None, verify_command: list[str] | None = None, delivery_mode: str = "auto") -> dict:
+def start(identifier: str, goal: str, allowed: list[str], checks: list[str], dependencies: list[str], root: Path = ROOT, managed_identity: str | None = None, verify_command: list[str] | None = None, delivery_mode: str = "auto", *,
+          kind: str | None = None, role: str = "writer", read_scope: list[str] | None = None,
+          inputs: list[str] | None = None, outputs: list[str] | None = None,
+          allocation: Allocation | None = None) -> dict:
+    if kind is not None and (not isinstance(kind, str) or kind not in {"engineering", "general", "legacy"}):
+        raise ValueError("Unknown task kind")
+    if kind != "engineering" and (role != "writer" or read_scope is not None or inputs is not None or outputs is not None or allocation is not None):
+        raise ValueError("Explicit engineering kind is required for task contract fields")
     root = root.resolve()
     state = source_state(root)
-    if not state["branch"].startswith("dev-"):
+    analysis = kind == "engineering" and role in READERS
+    if not analysis and not state["branch"].startswith("dev-"):
         raise ValueError("Start from a dev-<task-id>-<topic> branch created from dev")
-    base = git(root, "rev-parse", "origin/dev").decode().strip()
-    subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", base, "HEAD"], check=True)
-    if not allowed or not checks or any(Path(item).is_absolute() or ".." in item.replace("\\", "/").split("/") for item in allowed):
+    base = state["sha"] if analysis else git(root, "rev-parse", "origin/dev").decode().strip()
+    if not analysis:
+        subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", base, "HEAD"], check=True)
+    if kind == "engineering" and (not isinstance(allowed, list) or not isinstance(checks, list)):
+        raise ValueError("Engineering scopes and acceptance commands must be lists")
+    if kind != "engineering" and (not allowed or not checks or any(Path(item).is_absolute() or ".." in item.replace("\\", "/").split("/") for item in allowed)):
         raise ValueError("Provide repository-relative allowed paths and acceptance commands")
     path = task_path(identifier, root)
     if path.exists():
@@ -49,31 +68,73 @@ def start(identifier: str, goal: str, allowed: list[str], checks: list[str], dep
              "integration_target": "dev", "main_merge_operator": "human", "status": "ACTIVE",
              "host_platform":os.name,"owner_id":__import__("uuid").uuid4().hex,
              "managed_identity":managed_identity,"verify_command":verify_command,"delivery_mode":delivery_mode}
-    return TaskStore(root).create(value)
+    if kind == "engineering":
+        value.update(kind=kind, role=role, read_scope=read_scope, inputs=inputs, outputs=outputs)
+        if analysis:
+            value.update(branch=None, source_branch=state["branch"], owns_workspace=False, analysis_source=state)
+    elif kind in {"general", "legacy"}:
+        value["kind"] = "general"
+    return register_task(TaskStore(root), value, allocation)
 
 
 def handoff(identifier: str, evidence: list[Path], remaining: list[str], interventions: int | None,
             rework: int | None, root: Path = ROOT) -> dict:
-    path = task_path(identifier, root)
-    value = TaskStore(root).load(identifier)
+    store = TaskStore(root)
+    if store.load(identifier).get("kind") == "engineering":
+        with allocation_lock(store) as ticket:
+            return _handoff(identifier, evidence, remaining, interventions, rework, root, store, ticket)
+    return _handoff(identifier, evidence, remaining, interventions, rework, root, store)
+
+
+def _handoff(identifier: str, evidence: list[Path], remaining: list[str], interventions: int | None,
+             rework: int | None, root: Path, store: TaskStore, allocation: Allocation | None = None) -> dict:
+    value = store.load(identifier)
+    observed = source_state(root) if value.get("kind") == "engineering" else None
     errors = scope_errors(value, root)
     checks = set()
+    executed = set()
     reports = []
     for report in evidence:
         try:
             result = validate_evidence(report, root)
             if result.get("kind") == "verification":
                 checks.update(item["id"] for item in result["checks"] if item.get("status") == "PASS")
+            executed.update(tuple(item["command"]) for item in result["checks"]
+                            if item.get("status") == "PASS" and item.get("command"))
             reports.append({"path": str(report.resolve()), "sha256": digest(report), "status": result["status"]})
         except (ValueError, KeyError, OSError) as error:
             errors.append(str(error))
-    if not required_ids("all").issubset(checks):
+    if not (value.get("kind") == "engineering" and value.get("role") in READERS) and not required_ids("all").issubset(checks):
         errors.append("Full fast verification evidence is missing")
     value.update(status="READY" if not errors and not remaining else "BLOCKED", handoff_at=utc_now(),
-                 changed_files=changed_paths(root, value["base_sha"]), source=source_state(root),
+                 changed_files=[] if value.get("role") in READERS else changed_paths(root, value["base_sha"]), source=source_state(root),
                  evidence=reports, remaining=remaining, blockers=errors,
                  human_interventions=interventions, rework_count=rework)
-    return TaskStore(root).mutate(identifier,lambda current:{**current,**value},"handoff")
+    if value.get("kind") == "engineering":
+        allocation.assert_owner(store)
+        if value.get("role") in READERS:
+            from tenon import verification_argv
+            for argv in acceptance_commands(value["checks"]):
+                covered = required_ids("all").issubset(checks) if argv == ["make", "verify"] else tuple(verification_argv({"verify_command": argv}, root)) in executed
+                if not covered:
+                    errors.append("Declared analysis acceptance command has no executed evidence: " + repr(argv))
+        if value.get("role") not in READERS and extra_acceptance_commands(value):
+            errors.extend(acceptance_errors(value, root))
+        snapshot, contract_errors = handoff_contract(value, root, reports, remaining)
+        errors.extend(contract_errors)
+        if observed != value["source"] or snapshot["source"] != observed:
+            errors.append("Task source changed during handoff")
+        errors.extend(name for name in scope_errors(value, root) if name not in errors)
+        snapshot["blockers"] = errors
+        value.update(output_contract=snapshot, blockers=errors,
+                     status="READY" if not errors and not remaining else "BLOCKED")
+        if value["status"] == "READY":
+            value["execution_lease"] = {**value["execution_lease"], "state": "completed", "updated_at": utc_now()}
+    if value.get("kind") == "engineering":
+        fields = {name: value[name] for name in ("status", "handoff_at", "changed_files", "source", "evidence", "remaining",
+            "blockers", "human_interventions", "rework_count", "output_contract", "execution_lease")}
+        return store.mutate(identifier,lambda current:{**current,**fields},"handoff")
+    return store.mutate(identifier,lambda current:{**current,**value},"handoff")
 
 
 def cleanup_check(root: Path = ROOT) -> list[str]:
@@ -141,12 +202,22 @@ def main():
     create = commands.add_parser("start")
     create.add_argument("--id", required=True)
     create.add_argument("--goal", required=True)
-    create.add_argument("--allow", action="append", required=True)
+    create.add_argument("--allow", action="append", default=[])
     create.add_argument("--check", action="append", required=True)
     create.add_argument("--dependency", action="append", default=[])
     create.add_argument("--managed-identity")
     create.add_argument("--verify-command-json")
     create.add_argument("--local-only",action="store_true")
+    create.add_argument("--kind", choices=("engineering", "general", "legacy"))
+    create.add_argument("--role", choices=("writer", "integrator", "coordinator", "reviewer"), default="writer")
+    create.add_argument("--read-allow", action="append")
+    create.add_argument("--input", action="append")
+    create.add_argument("--output", action="append")
+    lease = commands.add_parser("lease")
+    lease.add_argument("--id", required=True)
+    lease.add_argument("--state", choices=("active", "paused", "completed"), required=True)
+    lease.add_argument("--owner-id", required=True)
+    lease.add_argument("--role", choices=("writer", "integrator", "coordinator", "reviewer"))
     migrate = commands.add_parser("migrate")
     migrate.add_argument("--worktree",type=Path,required=True)
     migrate.add_argument("--managed-identity")
@@ -164,7 +235,10 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "start":
-            value = start(args.id, args.goal, args.allow, args.check, args.dependency,managed_identity=args.managed_identity,verify_command=json.loads(args.verify_command_json) if args.verify_command_json else None,delivery_mode="local-only" if args.local_only else "auto")
+            value = start(args.id, args.goal, args.allow, args.check, args.dependency,managed_identity=args.managed_identity,verify_command=json.loads(args.verify_command_json) if args.verify_command_json else None,delivery_mode="local-only" if args.local_only else "auto",
+                kind=args.kind, role=args.role, read_scope=args.read_allow, inputs=args.input, outputs=args.output)
+        elif args.command == "lease":
+            value = set_lease_state(TaskStore(ROOT), args.id, args.state, owner_id=args.owner_id, role=args.role)
         elif args.command == "migrate":
             value = {"migrated":TaskStore(ROOT).migrate(args.worktree,args.managed_identity)}
         elif args.command == "status":

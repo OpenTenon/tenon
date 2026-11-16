@@ -41,16 +41,22 @@ def _main():
     constraints = args.cache / "python-constraints.txt"
     constraints.write_text("".join(f"{name}=={version}\n" for name, version in pins["python_packages"].items()), encoding="utf-8")
     additions = []
+    package_started = time.monotonic()
     if args.group == "format":
         subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--user", "--constraint", str(constraints), "mbake==" + pins["python_packages"]["mbake"]], check=True)
         entry = pins["verible"]
     else:
         subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--user", "--constraint", str(constraints), "yamllint==" + pins["python_packages"]["yamllint"]], check=True)
         entry = pins["actionlint_archive"]
+    package_seconds = time.monotonic() - package_started
     archive = args.cache / (args.group + "-" + entry["version"] + ".tar.gz")
-    if not verify_archive(archive, entry["sha256"]):
+    archive_started = time.monotonic()
+    cache_hit = verify_archive(archive, entry["sha256"])
+    downloaded_bytes = 0
+    if not cache_hit:
         with urllib.request.urlopen(entry["url"], timeout=60) as response:
             archive.write_bytes(response.read())
+        downloaded_bytes = archive.stat().st_size
     if not verify_archive(archive, entry["sha256"]):
         raise ValueError("Tool archive failed SHA256 verification")
     destination = args.cache / entry.get("extract_root", "")
@@ -67,6 +73,10 @@ def _main():
     preparation = ROOT / "build/tooling" / (args.group + "-preparation.json")
     preparation.parent.mkdir(parents=True, exist_ok=True)
     preparation.write_text(json.dumps({"group": args.group, "duration_seconds": round(time.monotonic() - started, 3),
+                                      "python_install_seconds": round(package_seconds, 3),
+                                      "archive_seconds": round(time.monotonic() - archive_started, 3),
+                                      "archive_cache_hit": cache_hit, "downloaded_bytes": downloaded_bytes,
+                                      "archive_sha256": entry["sha256"],
                                       "scope": "pinned-linter-preparation; excludes system package installation"}) + "\n", encoding="utf-8")
     prune_caches(ROOT)
     return 0
