@@ -124,6 +124,49 @@ class SharedStateTests(RepositoryFixture):
         self.assertFalse(list((TaskStore(self.root).root/"leases").glob("*.json")))
 
 
+class MergedPRQueryTests(unittest.TestCase):
+    def backend(self):
+        backend = object.__new__(GitHub)
+        backend.name = "fixture/repo"
+        self.run = {**green("candidate","pull_request")["workflow_run"],
+                    "path":".github/workflows/ci.yml","head_branch":"dev-owned",
+                    "head_repository":{"full_name":"fixture/repo"},"pull_requests":[]}
+        self.pull = {"number":7,"merged":True,"base":{"ref":"dev"},
+                     "head":{"sha":"candidate","ref":"dev-owned","repo":{"full_name":"fixture/repo"}}}
+        backend.pull = mock.Mock(side_effect=lambda number:copy.deepcopy(self.pull))
+        backend.api = mock.Mock(side_effect=lambda endpoint: {"workflow_runs":[copy.deepcopy(self.run)]}
+                                if endpoint.startswith("actions/runs?") else {"jobs":green("candidate","pull_request")["jobs"]})
+        return backend
+
+    def test_closed_pr_with_missing_association_keeps_exact_ci_proof(self):
+        backend = self.backend()
+        self.assertTrue(ci_green(backend.latest_run("candidate","pull_request",7),"candidate","pull_request"))
+        backend.pull.assert_called_once_with(7)
+
+    def test_detached_run_rejects_changed_or_unrelated_ownership(self):
+        changes = [lambda:self.pull.update(merged=False),
+                   lambda:self.pull["base"].update(ref="main"),
+                   lambda:self.pull["head"].update(sha="changed"),
+                   lambda:self.pull["head"]["repo"].update(full_name="foreign/repo"),
+                   lambda:self.pull["head"].update(repo=None),
+                   lambda:self.run.update(head_sha="changed"),
+                   lambda:self.run.update(head_branch="dev-other"),
+                   lambda:self.run["head_repository"].update(full_name="foreign/repo"),
+                   lambda:self.run.update(head_repository=None),
+                   lambda:self.run.update(pull_requests=[{"number":8}])]
+        for index,change in enumerate(changes):
+            with self.subTest(index=index):
+                backend = self.backend()
+                change()
+                self.assertIsNone(backend.latest_run("candidate","pull_request",7))
+
+    def test_explicit_association_remains_supported(self):
+        backend = self.backend()
+        self.run["pull_requests"] = [{"number":7}]
+        self.assertTrue(ci_green(backend.latest_run("candidate","pull_request",7),"candidate","pull_request"))
+        backend.pull.assert_not_called()
+
+
 class ConditionalRemoteDeletionTests(RepositoryFixture):
     def test_real_git_lease_refuses_a_changed_remote_and_deletes_exact_tip(self):
         remote = self.root/"build/remote.git"
