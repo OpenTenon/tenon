@@ -363,3 +363,12 @@ class WiringTests(RepositoryFixture):
 
 if __name__=="__main__":
     unittest.main()
+
+
+class LeaseObservationTests(RepositoryFixture):
+    def test_access_denied_is_unknown_rather_than_a_proven_held_lock(self):
+        path = self.root / "build/observer.lock"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\n{}")
+        with mock.patch.object(Path, "open", side_effect=PermissionError("read-only observation")):
+            self.assertIsNone(metrics._lease(path, os.name))

@@ -276,8 +276,12 @@ def _lease(path, platform):
     if platform != os.name:
         return None
     try:
+        # The shared cleanup probe conservatively treats access denial as held.
+        # A metric must distinguish an unavailable observation from a real lock.
+        with path.open("r+b"):
+            pass
         from task_store import lease_is_held
-    except ImportError:
+    except (OSError, ImportError):
         return None
     return lease_is_held(path)
 
