@@ -76,7 +76,20 @@ class GitHub:
         items = self.api(f"actions/runs?head_sha={sha}&event={event}&per_page=100")["workflow_runs"]
         items = [item for item in items if item["path"].split("@")[0]==".github/workflows/ci.yml"]
         if number is not None:
-            items = [item for item in items if any(p["number"]==number for p in item.get("pull_requests",[]))]
+            associated = [item for item in items if any(p["number"]==number for p in item.get("pull_requests",[]))]
+            detached = [item for item in items if not item.get("pull_requests")]
+            # GitHub can drop pull_requests from a run after its PR is merged.
+            # Recover the association only from a live, exact, same-repository PR.
+            if detached:
+                pull = self.pull(number)
+                head = pull.get("head",{})
+                if (pull.get("merged") and pull.get("base",{}).get("ref")=="dev"
+                        and head.get("sha")==sha
+                        and (head.get("repo") or {}).get("full_name","").lower()==self.name.lower()):
+                    associated += [item for item in detached if item.get("head_sha")==sha
+                        and item.get("head_branch")==head.get("ref")
+                        and (item.get("head_repository") or {}).get("full_name","").lower()==self.name.lower()]
+            items = associated
         if not items:
             return None
         run = max(items,key=lambda item:(item["id"],item["run_attempt"]))
