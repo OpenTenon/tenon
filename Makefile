@@ -56,6 +56,12 @@ SMOKE_DIR       := smoke
 SKY130_FLOW_DIR := flow/sky130
 .DEFAULT_GOAL := help
 
+TENON_ARGS ?= doctor
+
+.PHONY: tenon
+tenon:
+	$(PYTHON) scripts/tenon.py --repo . $(TENON_ARGS)
+
 ifneq ($(filter 1 true TRUE yes YES,$(SKIP_DRC)),)
 IHP_DRC_OVERRIDES := --override-config RUN_MAGIC_DRC=false --override-config RUN_KLAYOUT_DRC=false
 GF180_DRC_SKIPS   := --skip Magic.DRC --skip KLayout.DRC

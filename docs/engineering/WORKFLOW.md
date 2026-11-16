@@ -1,5 +1,28 @@
 # Tenon agent engineering workflow v2
 
+## Stable entry and Git workspaces
+
+Run `python3 scripts/tenon.py --repo <primary-repo> install` from a version that
+contains the entry. Installation fetches current dev, requires its complete green
+push CI, and deploys the controller and a hash-checked launcher under
+`<git-common-dir>/tenon/bin/tenon.py`. The primary checkout can remain on main.
+The installed entry is bound to this repository and survives task worktree removal.
+Reinstalling selects a new green dev SHA and retains the previous version identity.
+
+Use the installed entry with `task start --id TASK --topic TOPIC --goal GOAL
+--allow 'scripts/*' --check 'make verify'`. It fetches dev, creates the short branch
+and a Git-managed workspace in the primary repository's sibling
+`.tenon-worktrees/<repo-id>/<task-id>`, and registers its bounded task contract.
+An explicit `--workspace-root` supports controlled build/test environments.
+`--verify-command-json` records an existing host verification argv; no tool or PDK
+is installed. `doctor` reports available capabilities; missing full Linux tools
+remain verification blockers. Primary edits are preserved.
+
+`task status --id TASK`, `task verify --id TASK` and `task resume --id TASK` select
+the registered task rather than assuming the current checkout owns it. Existing
+Make/Python commands remain supported. A workspace-creation failure retains its
+setup intent and any created resource for inspection; it never force-cleans it.
+
 The existing architecture/PDK constraints in [AGENTS.md](../../AGENTS.md) remain
 unchanged. Engineering-only tasks do not change product RTL, behavior, package
 contracts, geometry or teaching material. Main merging, release tags and publication
