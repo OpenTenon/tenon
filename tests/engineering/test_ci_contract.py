@@ -161,7 +161,7 @@ class HostProfileTests(RepositoryFixture):
 
     def entry(self,name,command=None):
         from test_entrypoint import Backend
-        return tenon.start_workspace(self.root,name,'profile','Host profile fixture',['scripts/*'],['make verify'],
+        return tenon.start_workspace(self.root,name,'profile','Host profile fixture',['scripts/'+name+'.py'],['make verify'],
             verify_command=command,workspace_root=self.root/'build/workspaces',backend=Backend())
 
     def test_new_task_and_intent_freeze_profile_but_explicit_command_is_authoritative(self):
