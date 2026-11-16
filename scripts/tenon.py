@@ -122,7 +122,7 @@ def install(repo: Path, backend=None) -> dict:
                     else (previous or {}).get("previous_commit")}
         # The small launcher validates every deployed script before executing anything.
         launcher = '''#!/usr/bin/env python3
-import hashlib, json, os, sys
+import hashlib, json, os, subprocess, sys
 from pathlib import Path
 binary = Path(__file__).resolve().parent
 try:
@@ -137,7 +137,7 @@ try:
             raise ValueError("Controller integrity check failed")
     if "--repo" in sys.argv[1:] or any(item.startswith("--repo=") for item in sys.argv[1:]):
         raise ValueError("This installed entry is bound to its registered repository")
-    os.execv(sys.executable, [sys.executable, str(root / "scripts/tenon.py"), "--repo", config["repo"], *sys.argv[1:]])
+    raise SystemExit(subprocess.run([sys.executable, str(root / "scripts/tenon.py"), "--repo", config["repo"], *sys.argv[1:]]).returncode)
 except (OSError, ValueError, KeyError) as error:
     print(json.dumps({"status": "BLOCKED", "reason": str(error)}))
     raise SystemExit(2)
@@ -179,9 +179,21 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--verify-command-json")
     start.add_argument("--local-only", action="store_true")
     start.add_argument("--workspace-root", type=Path, help="Explicit workspace root, primarily for controlled environments")
-    for name in ("status", "resume", "verify"):
+    for name in ("status", "resume", "verify", "submit", "deliver"):
         command = tasks.add_parser(name)
         command.add_argument("--id", required=True)
+    reconciliation = commands.add_parser("reconcile")
+    reconciliation.add_argument("--all", action="store_true", required=True)
+    reconciliation.add_argument("--once", action="store_true", required=True)
+    reconciliation.add_argument("--apply", action="store_true")
+    reconciliation.add_argument("--json", action="store_true")
+    worker = commands.add_parser("worker").add_subparsers(dest="worker_command", required=True)
+    for name in ("install", "remove", "status", "disable"):
+        worker.add_parser(name)
+    enable = worker.add_parser("enable")
+    enable.add_argument("--acceptance-task", required=True)
+    run = worker.add_parser("run")
+    run.add_argument("--max-seconds", type=float, default=900)
     return result
 
 
@@ -194,6 +206,19 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "doctor":
             value = {"status": "READY" if shutil.which("git") else "BLOCKED", "repo": str(repo),
                      "capabilities": capabilities(), "dev_sha": git(repo, "rev-parse", "origin/dev").decode().strip()}
+        elif args.command == "reconcile":
+            from task_queue import reconcile
+            value = reconcile(repo, apply=args.apply)
+        elif args.command == "worker":
+            from task_worker import configuration, run, scheduler, set_enabled
+            if args.worker_command in {"enable", "disable"}:
+                value = set_enabled(repo, args.worker_command == "enable", getattr(args, "acceptance_task", None))
+            elif args.worker_command == "run":
+                value = run(repo, args.max_seconds)
+            elif args.worker_command == "status":
+                value = {"configuration": configuration(TaskStore(repo)), "scheduler": scheduler(repo, "status") if os.name == "nt" else None}
+            else:
+                value = scheduler(repo, args.worker_command)
         elif args.task_command == "start":
             value = start_workspace(repo, args.id, args.topic, args.goal, args.allow, args.check,
                 args.dependency, json.loads(args.verify_command_json) if args.verify_command_json else None,
@@ -204,6 +229,18 @@ def main(argv: list[str] | None = None) -> int:
             value = TaskStore(repo).load(args.id)
             root = Path(value["worktree"])
             return subprocess.run(verification_argv(value, root), cwd=root).returncode
+        elif args.task_command in {"submit", "deliver"}:
+            from task_lifecycle import Lifecycle
+            from task_queue import submit
+            from task_worker import launch
+            if args.task_command == "deliver":
+                store = TaskStore(repo)
+                with FileLease(store.root / "locks/integration.lock"), FileLease(store.root / "locks" / (args.id + "-controller.lock")):
+                    result = Lifecycle(repo, args.id).deliver()
+                if result.get("status") in {"NEEDS_ATTENTION", "DEV_CI_FAILED", "CLEANED"}:
+                    print(json.dumps(result, indent=2))
+                    return 0 if result["status"] == "CLEANED" else 2
+            value = {"queue": submit(repo, args.id), "worker": launch(repo)}
         else:
             return subprocess.run([sys.executable, str(Path(__file__).with_name("task_lifecycle.py")),
                 "resume", "--repo", str(repo), "--id", args.id], cwd=repo).returncode

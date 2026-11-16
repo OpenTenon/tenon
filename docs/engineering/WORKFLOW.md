@@ -21,7 +21,38 @@ remain verification blockers. Primary edits are preserved.
 `task status --id TASK`, `task verify --id TASK` and `task resume --id TASK` select
 the registered task rather than assuming the current checkout owns it. Existing
 Make/Python commands remain supported. A workspace-creation failure retains its
-setup intent and any created resource for inspection; it never force-cleans it.
+setup intent and full contract before creation; repeating the same command adopts
+only its exact unchanged clean worktree at the same dev base. Changed contracts,
+new work or an advanced base remain inspectable blockers.
+
+## Background queue and host recovery
+
+The installed entry exposes `task deliver --id TASK`, `task submit --id TASK`,
+`reconcile --all --once [--apply]`, and `worker install|status|run|enable|disable|remove`.
+Delivery prepares the committed candidate through the existing verifier and queues
+pending continuation. Submission alone accepts only a clean verified candidate or
+an already-merged task; ACTIVE edits and local-only tasks cannot be queued.
+Queue schema v1 is separate from task v2 and stores candidate/owner identity,
+verification hash, retry state and the next attempt. Every mutation takes the
+existing task lock and a shared integration lock. Reads do not execute deliveries.
+
+`worker install` registers one current-user Windows task, using windowless Python,
+an exact installed entry and the retained primary working directory. It runs at
+login and every five minutes, with missed-run recovery and IgnoreNew instances.
+It starts in read-only mode. After a real task is merged, archived and CLEANED,
+`worker enable --acceptance-task TASK` enables automatic queue processing.
+`task deliver` then starts a hidden bounded worker immediately; the scheduled
+task compensates for worker exit or a later login. Per-step timeouts still apply;
+the scheduling bound stops new iterations, never kills an active command.
+
+Network failures and sharing leases back off. Changed ownership, source, evidence,
+authorization or policy become durable BLOCKED entries. A managed worktree without
+its native archive receipt becomes WAITING_APP; the application must complete that
+handoff before an explicit submission resumes it. The worker never invents app
+receipts. Pending entries are never CLEANED. `worker disable` stops new automatic
+iterations and preserves records; `worker remove` unregisters only this owned
+scheduler entry without terminating an active process. Logs and current status
+remain under shared operations/. The legacy one-off native waiter remains supported.
 
 The existing architecture/PDK constraints in [AGENTS.md](../../AGENTS.md) remain
 unchanged. Engineering-only tasks do not change product RTL, behavior, package
@@ -138,7 +169,8 @@ move owned idle terminals out of the target or close them after preserving outpu
 Never stop active commands or unrelated sessions to clear an OS sharing violation.
 For a retained OS sharing lease, invoke `wait-app-cleanup` on the deployed external
 controller with the same receipt and explicit `--wait-seconds` (maximum one day).
-This is a bounded one-off executor, not a recurring automation or service. Start
+This compatibility waiter is a bounded one-off executor. The explicit autonomous
+queue above provides scheduled recovery separately. Start
 it from the primary repository with a hidden window on Windows and logs outside
 the worktree. Its PID and waiting state are durable. A non-mutating Windows handle
 probe avoids CI polling while locked; release triggers fresh ordinary cleanup gates.
