@@ -68,14 +68,21 @@ def submit(repo: Path, task_id: str) -> dict:
 def classify(error: BaseException) -> str:
     if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)) or getattr(error, "winerror", None) == 32:
         return "RESOURCE" if getattr(error, "winerror", None) == 32 else "TRANSIENT"
+    if isinstance(error, (ValueError, KeyError)):
+        return "POLICY"
     text = str(error).lower()
     if isinstance(error, subprocess.CalledProcessError):
         # CalledProcessError.__str__ contains argv, including SSH ConnectTimeout.
         # Only process diagnostics can establish a transport failure.
         diagnostic = error.stderr or error.stdout or b""
         text = diagnostic.decode("utf-8", errors="replace").lower() if isinstance(diagnostic, bytes) else diagnostic.lower()
+    if any(fragment in text for fragment in ("bad credentials", "authentication failed", "permission denied", "http 401", "resource not accessible by integration")):
+        return "POLICY"
     if any(fragment in text for fragment in ("timed out", "timeout", "connection reset", "connection refused",
-            "could not resolve", "unable to resolve", "network is unreachable", "http 502", "http 503", "http 504")):
+            "could not resolve", "unable to resolve", "network is unreachable", "http 502", "http 503", "http 504",
+            "a connection attempt failed because the connected party did not properly respond",
+            "established connection failed because connected host has failed to respond",
+            "http 429", "api rate limit exceeded", "secondary rate limit")):
         return "TRANSIENT"
     return "POLICY"
 
@@ -209,4 +216,7 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
                                  reason=str(error), error_category=classify(error))
                     write_json(path, entry)
                 results[-1] = {"task_id": task_id, "state": entry["state"], "reason": str(error)}
-    return {"schema_version": 1, "mode": "apply" if apply else "read-only", "at": now.isoformat(), "tasks": results}
+    states = {item["state"] for item in results}
+    status = "BLOCKED" if "BLOCKED" in states else "WAITING" if states & {"WAITING","BACKOFF","QUEUED","WAITING_APP"} else "OBSERVED"
+    return {"schema_version": 1, "status":status, "qualification":"Queue observation only; WAITING is never CLEANED",
+            "mode": "apply" if apply else "read-only", "at": now.isoformat(), "tasks": results}

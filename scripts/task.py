@@ -164,36 +164,44 @@ def _parse_time(value: str):
 
 
 def metrics(directory: Path) -> dict:
+    """Compatible legacy keys plus the qualified read-only metrics v1 report."""
+    from engineering_metrics import collect, summarize, elapsed
+    from math import isfinite
     if directory.name=="tasks" and directory.parent.name=="build" and (directory.parent.parent/".git").exists():
-        tasks = TaskStore(directory.parent.parent).all()
+        repo = directory.parent.parent
+        detailed = collect(repo)
+        tasks = TaskStore(repo).all() if detailed.get("initialized") else []
     else:
         tasks = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(directory.glob("*.json"))]
-    finished = [task for task in tasks if task.get("completed_at") or task.get("delivered_at") or task.get("delivery",{}).get("merged")]
-    cycles = [(_parse_time(task.get("delivered_at") or task.get("delivery",{}).get("merged_at") or task["completed_at"]) - _parse_time(task["started_at"])).total_seconds()
-              for task in finished]
-    interventions = [task["human_interventions"] for task in finished if isinstance(task.get("human_interventions"), int)]
-    rework = [task["rework_count"] for task in finished if isinstance(task.get("rework_count"), int)]
-    attempts = [task.get("verification_attempts", []) for task in tasks]
-    executed_first = [next((item for item in values if item.get("status") in {"PASS", "FAIL"}), None)
-                      for values in attempts]
-    executed_first = [item for item in executed_first if item]
-    preparation = [entry["duration_seconds"] for values in attempts for item in values
-                   for entry in item.get("preparation", []) if isinstance(entry.get("duration_seconds"), (int, float))]
-    return {"schema_version": 2, "tasks": len(tasks), "finished_tasks": len(finished),
-            "baseline_ready": len(finished) >= 20,
-            "delivered_tasks":sum(bool(item.get("delivery",{}).get("merged")) for item in tasks),
-            "cleaned_tasks":sum(item.get("status")=="CLEANED" for item in tasks),
-            "verification_ready_tasks":sum(item.get("status")=="READY" for item in tasks),
-            "blocked_tasks":sum(item.get("status") in {"BLOCKED","NEEDS_ATTENTION","DEV_CI_FAILED","WAITING_RESOURCE"} for item in tasks),
-            "cleanup_delays_seconds":[(_parse_time(item["cleaned_at"])-_parse_time(item.get("delivered_at") or item["delivery"]["merged_at"])).total_seconds() for item in tasks if item.get("cleaned_at") and (item.get("delivered_at") or item.get("delivery",{}).get("merged_at"))],
-            "cleanup_pending_tasks":sum(bool(item.get("delivery",{}).get("merged")) and item.get("status")!="CLEANED" for item in tasks),
-            "first_executed_verification_samples": len(executed_first),
-            "first_executed_verification_pass_fraction": sum(item["status"] == "PASS" for item in executed_first) / len(executed_first) if executed_first else None,
-            "median_linter_preparation_seconds": statistics.median(preparation) if preparation else None, "median_cycle_seconds": statistics.median(cycles) if cycles else None,
-            "ready_fraction": sum(task["status"] in {"READY","INTEGRATED","CLEANUP_PENDING","MERGED","DEV_GREEN","ARCHIVED","CLEANING","CLEANED"} or task.get("delivery",{}).get("merged",False) for task in finished) / len(finished) if finished else None,
-            "intervention_samples": len(interventions), "human_interventions": sum(interventions) if interventions else None,
-            "rework_samples": len(rework), "rework_count": sum(rework) if rework else None,
-            "note": "Unknown intervention/rework counts remain unknown; no productivity gain is inferred."}
+        detailed = summarize(tasks)
+    finished = [row for row in tasks if row.get("completed_at") or row.get("delivered_at") or row.get("delivery",{}).get("merged")]
+    cycles = [elapsed(row.get("started_at"), row.get("delivered_at") or row.get("delivery",{}).get("merged_at") or row.get("completed_at")) for row in finished]
+    cycles = [value for value in cycles if value is not None]
+    def attempts(row):
+        values = row.get("verification_attempts",[])
+        return [value for value in values if isinstance(value,dict)] if isinstance(values,list) else []
+    firsts = [next((entry for entry in attempts(row) if entry.get("status") in {"PASS","FAIL"}),None) for row in tasks]
+    firsts = [value for value in firsts if value]
+    preparation = [item["duration_seconds"] for row in tasks for entry in attempts(row) for item in entry.get("preparation",[])
+                   if isinstance(item,dict) and type(item.get("duration_seconds")) in {int,float} and isfinite(item["duration_seconds"]) and item["duration_seconds"]>=0]
+    counters = detailed["counters"]
+    cleanup = [elapsed(row.get("delivered_at") or row.get("delivery",{}).get("merged_at"),row.get("cleaned_at")) for row in tasks if row.get("cleaned_at")]
+    return {"schema_version":2,"status":"BLOCKED" if detailed.get("diagnostics") else "OBSERVED",
+        "tasks":len(tasks),"finished_tasks":len(finished),"baseline_ready":detailed["baseline_ready"],
+        "delivered_tasks":detailed["delivered_tasks"],"cleaned_tasks":detailed["cleaned_tasks"],
+        "verification_ready_tasks":sum(row.get("status")=="READY" for row in tasks),
+        "blocked_tasks":sum(row.get("status") in {"BLOCKED","NEEDS_ATTENTION","DEV_CI_FAILED","WAITING_RESOURCE"} for row in tasks),
+        "cleanup_delays_seconds":[value for value in cleanup if value is not None],
+        "cleanup_pending_tasks":detailed["cleanup_pending_tasks"],
+        "first_executed_verification_samples":len(firsts),
+        "first_executed_verification_pass_fraction":sum(row["status"]=="PASS" for row in firsts)/len(firsts) if firsts else None,
+        "median_linter_preparation_seconds":statistics.median(preparation) if preparation else None,
+        "median_cycle_seconds":statistics.median(cycles) if cycles else None,
+        "ready_fraction":sum(row.get("status") in {"READY","INTEGRATED","CLEANUP_PENDING","MERGED","DEV_GREEN","ARCHIVED","CLEANING","CLEANED"} or row.get("delivery",{}).get("merged",False) for row in finished)/len(finished) if finished else None,
+        "intervention_samples":counters["human_interventions"]["samples"],"human_interventions":counters["human_interventions"]["known_total"],
+        "rework_samples":counters["rework_count"]["samples"],"rework_count":counters["rework_count"]["known_total"],
+        "engineering_metrics_v1":detailed,
+        "note":"Legacy first_executed keys include partial groups; engineering_metrics_v1 classifies full runs. Unknown counters stay unknown; no productivity or signoff inference."}
 
 
 def main():

@@ -363,8 +363,27 @@ shared cache storage. Download archives are checked and extracted again after ca
 hits. Keep current and previous registered versions plus active task references;
 unknown caches and PDK installations are never removed by cache reclamation.
 
-Metrics distinguish validation, delivery and cleanup, including pending resources,
-first executed verification and cleanup delay. Integrated tasks remain successful;
-unknown intervention/rework counts remain unknown. Gather 20 real delivered tasks
-before interpreting productivity trends. Monthly, inspect pins, stale references,
-Skill behavior and recorded failures; update through separate small dev PRs.
+The stable entry exposes `metrics [--remote] [--month YYYY-MM]`. Collection is
+read-only and uses shared task v2/journal/inbox/queue v1 observations, even when the
+primary checkout remains on old main. Remote heads are queried only with explicit
+`--remote`; recorded deletion is historical rather than proof of current absence.
+OBSERVED qualifies a completed observation, not project success or signoff; invalid
+or incomplete diagnostic inputs return BLOCKED and a failing command status.
+
+Legacy task metrics retain their useful keys and add `engineering_metrics_v1`.
+Baseline readiness requires 20 confirmed merged deliveries, never merely READY or
+completed_at records. Full-run first-pass uses timestamp-ordered executed group=all
+PASS/FAIL observations, distinguishes partial/blocked/dry runs and preserves
+same-run contradictions as unknown. Stage walltimes and nearest-rank p50/p95 carry
+sample/missing counts. CI execution is unknown when exact timestamps are absent.
+Current blockers are separated from historical errors on recovered tasks; stored
+PIDs and command lease files do not prove liveness. Explicit unknown intervention
+and rework counts remain unknown, with booleans/negative values rejected.
+
+Monthly upkeep adds `metrics.json` and `improvement-items.json` beside its private
+report and links them from the summary. Evidence-linked suggestions are appended
+to existing proposed work items without repairs or additional remote probes.
+Archive/source/restore failures retain their status. Queue reconciliation reports
+BLOCKED when any item is blocked; WAITING remains pending and is never CLEANED.
+Known Windows GH transport timeout and explicit rate-limit errors are retryable;
+authorization, ownership and evidence violations remain policy blockers.

@@ -221,6 +221,15 @@ def audit(repo: Path, live: bool = True, include_source: bool = True) -> dict:
     return {**result, "report": str(directory / "summary.json"), "work_items": str(directory / "work-items.json")}
 
 
+def proposed_work_items(result: dict) -> list[dict]:
+    work = [{"check":item["id"],"state":"PROPOSED","reason":item.get("reason") or item.get("errors"),"evidence":result["report"]}
+            for item in result["checks"] if item["status"] != "PASS"]
+    work.extend({"check":"metrics:"+item["code"],"state":"PROPOSED","priority":item["priority"],
+                 "task_ids":item["task_ids"],"reason":item["action"],"evidence":result["report"],"observations":item["evidence"]}
+                for item in result.get("improvement_items",{}).get("items",[]))
+    return work
+
+
 def run_due(repo: Path, force: bool = False) -> dict:
     store = TaskStore(repo)
     state_path = store.root / "maintenance-state.json"
@@ -232,6 +241,24 @@ def run_due(repo: Path, force: bool = False) -> dict:
         if not force and state.get("next_attempt_at") and datetime.fromisoformat(state["next_attempt_at"]) > now:
             return {"status": "NOT_DUE", "next_attempt_at": state["next_attempt_at"]}
         result = audit(repo)
+        try:
+            from engineering_metrics import collect, improvement_items
+            metrics = collect(repo,as_of=now,probe_remote=False)
+            result["engineering_metrics_v1"] = metrics
+            result["improvement_items"] = improvement_items(metrics,now.strftime("%Y-%m"))
+            directory = Path(result["report"]).parent
+            write_json(directory/"metrics.json",metrics)
+            write_json(directory/"improvement-items.json",result["improvement_items"])
+            result["metrics_report"] = str(directory/"metrics.json")
+            result["improvement_items_report"] = str(directory/"improvement-items.json")
+            if metrics.get("diagnostics"):
+                result["checks"].append({"id":"metrics-observation","status":"BLOCKED","reason":"Some metric observations are incomplete","diagnostics":metrics["diagnostics"]})
+                if result["status"] == "PASS":
+                    result["status"] = "BLOCKED"
+        except (OSError,ValueError,KeyError,subprocess.SubprocessError) as error:
+            result["checks"].append({"id":"metrics-observation","status":"BLOCKED","reason":str(error)})
+            if result["status"] == "PASS":
+                result["status"] = "BLOCKED"
         tasks = [task for task in store.all() if task.get("archive")]
         cursor = state.get("restore_cursor", 0)
         if tasks and not any(item["status"] != "PASS" for item in result["checks"] if item["id"].startswith("archive:")):
@@ -242,8 +269,7 @@ def run_due(repo: Path, force: bool = False) -> dict:
                 result["checks"].append({"id": "restore-exercise", "status": "FAIL", "reason": str(error)})
                 result["status"] = "FAIL"
         write_json(Path(result["report"]), result)
-        write_json(Path(result["work_items"]), [{"check": item["id"], "state": "PROPOSED", "reason": item.get("reason") or item.get("errors"),
-                   "evidence": result["report"]} for item in result["checks"] if item["status"] != "PASS"])
+        write_json(Path(result["work_items"]), proposed_work_items(result))
         delay = timedelta(days=30) if result["status"] == "PASS" else timedelta(days=1)
         write_json(state_path, {"schema_version": 1, "repo_id": store.repo_id, "last_report": result["report"],
                               "last_status": result["status"], "restore_cursor": cursor, "next_attempt_at": (now + delay).isoformat()})
