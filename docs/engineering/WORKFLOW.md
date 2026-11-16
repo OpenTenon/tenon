@@ -113,6 +113,15 @@ If the checkout is gone while its exact unlocked Git entry remains, recovery use
 gates. No global prune or direct metadata deletion is allowed. Before cleanup,
 move owned idle terminals out of the target or close them after preserving output.
 Never stop active commands or unrelated sessions to clear an OS sharing violation.
+For a retained OS sharing lease, invoke `wait-app-cleanup` on the deployed external
+controller with the same receipt and explicit `--wait-seconds` (maximum one day).
+This is a bounded one-off executor, not a recurring automation or service. Start
+it from the primary repository with a hidden window on Windows and logs outside
+the worktree. Its PID and waiting state are durable. A non-mutating Windows handle
+probe avoids CI polling while locked; release triggers fresh ordinary cleanup gates.
+Only sharing violations are retried. Invalid evidence, changed refs, failed CI and
+timeout stop the worker and preserve remaining resources. WAITING_RESOURCE is not
+CLEANED. Check the recorded PID/state rather than claiming queued cleanup succeeded.
 
 Only registered dev-* task resources qualify. Protect primary, shared, locked or
 active worktrees, dev/main/default refs, changed tips and dirty source. Exact-head

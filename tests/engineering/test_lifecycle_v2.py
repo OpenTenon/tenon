@@ -13,7 +13,7 @@ from unittest import mock
 from test_engineering import RepositoryFixture, ROOT
 from task_store import TaskStore, resource_lease
 from task_archive import archive_task, ownership_errors, verify_archive
-from task_lifecycle import Lifecycle, GitHub, ci_green
+from task_lifecycle import Lifecycle, GitHub, ci_green, directory_delete_ready
 import task
 import skill_eval
 
@@ -58,6 +58,11 @@ class SharedStateTests(RepositoryFixture):
         task.start("reader","fixture",["*"],["make verify"],[],self.root)
         with mock.patch("task_store.FileLease.__enter__",side_effect=AssertionError("read attempted a write lock")):
             self.assertEqual(TaskStore(self.root).load("reader")["task_id"],"reader")
+            import io,contextlib,task_lifecycle
+            output = io.StringIO()
+            with mock.patch("sys.argv",["task_lifecycle.py","status","--repo",str(self.root),"--id","reader"]),contextlib.redirect_stdout(output):
+                self.assertEqual(task_lifecycle.main(),0)
+            self.assertEqual(json.loads(output.getvalue())["task_id"],"reader")
 
     def test_other_task_cannot_claim_the_same_worktree(self):
         task.start("first","fixture",["*"],["make verify"],[],self.root)
@@ -305,6 +310,54 @@ class ArchiveAndCleanupTests(OwnedWorktreeFixture):
         self.run_git("worktree","remove",str(self.owned))
         self.owned.mkdir()
         return receipt
+
+    def test_wait_worker_does_not_touch_remote_until_directory_is_released(self):
+        receipt,_ = self.native_receipt()
+        calls = []
+        def ready(root):
+            calls.append(self.backend.deleted)
+            return len(calls)>2
+        with mock.patch("task_lifecycle.directory_delete_ready",side_effect=ready),mock.patch("task_lifecycle.time.sleep"):
+            self.assertEqual(self.controller.wait_app_cleanup(receipt,2,.01)["status"],"CLEANED")
+        self.assertEqual(calls,[0,0,0])
+        self.assertEqual(self.store.load("owned")["cleanup_worker"]["state"],"DONE")
+
+    def test_wait_worker_timeout_preserves_resources_and_counts_pending(self):
+        receipt,_ = self.native_receipt()
+        with mock.patch("task_lifecycle.directory_delete_ready",return_value=False),self.assertRaises(TimeoutError):
+            self.controller.wait_app_cleanup(receipt,0)
+        row = self.store.load("owned")
+        self.assertEqual(row["status"],"WAITING_RESOURCE")
+        self.assertEqual(row["cleanup_worker"]["state"],"STOPPED")
+        self.assertTrue(self.owned.exists())
+        self.assertEqual(self.backend.deleted,0)
+        self.assertEqual(task.metrics(self.store.root/"tasks")["blocked_tasks"],1)
+
+    def test_wait_worker_does_not_retry_protocol_or_evidence_failures(self):
+        receipt,_ = self.native_receipt()
+        with mock.patch("task_lifecycle.directory_delete_ready",return_value=True),mock.patch.object(self.controller,"complete_app_cleanup",side_effect=ValueError("archive invalid")),mock.patch("task_lifecycle.time.sleep") as sleep:
+            with self.assertRaises(ValueError):
+                self.controller.wait_app_cleanup(receipt,2)
+        sleep.assert_not_called()
+        self.assertTrue(self.owned.exists())
+        self.assertEqual(self.backend.deleted,0)
+
+    @unittest.skipUnless(os.name=="nt","Native Windows directory sharing semantics")
+    def test_native_windows_probe_observes_a_real_sharing_lease_without_deletion(self):
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32",use_last_error=True)
+        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,wintypes.LPVOID,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.CreateFileW(str(self.owned),0x80000000,3,None,3,0x02000000,None)
+        self.assertNotEqual(handle,ctypes.c_void_p(-1).value)
+        try:
+            self.assertFalse(directory_delete_ready(self.owned))
+            self.assertTrue(self.owned.exists())
+        finally:
+            kernel.CloseHandle(handle)
+        self.assertTrue(directory_delete_ready(self.owned))
 
     def test_native_missing_checkout_reconciles_only_its_owned_registration(self):
         import shutil
