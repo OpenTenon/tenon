@@ -1414,19 +1414,25 @@ def main() -> int:
     parser.add_argument(
         "--check", action="store_true", help="fail when generated files differ"
     )
+    parser.add_argument("--list-outputs", action="store_true", help="list generated paths as JSON without writing")
     args = parser.parse_args()
+    if args.check and args.list_outputs:
+        parser.error("--check and --list-outputs are mutually exclusive")
 
-    spec = json.loads(SPEC_PATH.read_text())
-    pdk_spec = json.loads(PDK_SPEC_PATH.read_text())
+    spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+    pdk_spec = json.loads(PDK_SPEC_PATH.read_text(encoding="utf-8"))
     outputs = expected_outputs(spec, pdk_spec)
+    if args.list_outputs:
+        print(json.dumps(sorted(path.relative_to(ROOT).as_posix() for path in outputs)))
+        return 0
     mismatches = []
     for path, content in outputs.items():
         if args.check:
-            if not path.exists() or path.read_text() != content:
+            if not path.exists() or path.read_text(encoding="utf-8") != content:
                 mismatches.append(path.relative_to(ROOT))
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content)
+            path.write_text(content, encoding="utf-8")
     for path in obsolete_outputs(spec):
         if args.check:
             if path.exists():

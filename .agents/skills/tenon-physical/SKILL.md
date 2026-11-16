@@ -1,0 +1,16 @@
+---
+name: tenon-physical
+description: Run or assess explicitly requested Tenon real-PDK lint or physical validation using an existing external environment, retaining non-signoff qualifications and native evidence.
+---
+
+# Tenon physical execution
+
+Read [physical execution and evidence](../../../docs/engineering/WORKFLOW.md#physical-execution).
+
+- Select the requested PDK/profile/variant and run the PDK or physical doctor profile. Missing commercial views or tools are blockers; do not install or replace a PDK.
+- Run `make verify-pdk TENON_PDK=<ihp130|sky130|gf180|ics55>` before physical work. Retain the resulting summary.
+- Use the existing named Make hardening target. Shared execution enforces an exclusive workspace lease and refuses an existing native run tag; use a separate worktree for a new run.
+- AGENTS.md defines the complete exception boundary. Do not skip extraction, LVS, antenna or connectivity checks. DRC-only skipping requires explicit user authorization and its audit reference; a reference string itself is not permission.
+- Explicit ICS55 unsigned IO-PG runs still execute and retain the power-grid checker, skip only its documented IR-drop rerun, and remain non-signoff.
+- Inspect native final metrics, stage reports and source/configuration/PDK fingerprints. Report executed and skipped checks separately. A successful process is not manufacturing signoff.
+- Do not overwrite earlier runs, export duplicate hardening views into build, or automatically update tracked smoke reports.

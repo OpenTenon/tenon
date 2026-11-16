@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import subprocess
+import os
 from pathlib import Path
 
 from design_manifest import load_designs
@@ -16,7 +17,7 @@ def main() -> int:
     for design in designs:
         source = ROOT / design["name"] / design["rtl"]
         command = [
-            "iverilog",
+            os.environ.get("IVERILOG", "iverilog"),
             "-g2012",
             "-tnull",
             "-s",
@@ -24,7 +25,7 @@ def main() -> int:
             str(source),
         ]
         print("+", " ".join(command))
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, timeout=120)
 
     print(f"PASS: compiled {len(designs)} ICS55 smoke RTL tops.")
     return 0

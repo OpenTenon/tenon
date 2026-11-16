@@ -2,7 +2,9 @@ name: ci
 
 on:
   push:
+    branches: [dev, main]
   pull_request:
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:
@@ -15,40 +17,85 @@ concurrency:
 jobs:
   format:
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Install mbake
-        run: python3 -m pip install mbake==1.4.6
-      - name: Install locked Verible
-        env:
-          VERIBLE_URL: https://github.com/chipsalliance/verible/releases/download/v0.0-3946-g851d3ff4/verible-v0.0-3946-g851d3ff4-linux-static-x86_64.tar.gz
-          VERIBLE_SHA256: be81036ab5a3d5d5ba4ee677ebf9a09665779c3bd99ffe2e161c5025beaa1f16
-        run: |
-          curl --fail --location --output verible.tar.gz "${VERIBLE_URL}"
-          echo "${VERIBLE_SHA256}  verible.tar.gz" | sha256sum --check
-          tar --extract --file verible.tar.gz
-          echo "${PWD}/verible-v0.0-3946-g851d3ff4/bin" >> "${GITHUB_PATH}"
-      - run: make format-check
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            ~/.cache/tenon-ci
+            ~/.cache/pip
+          key: tenon-format-${{ runner.os }}-${{ hashFiles('tools/toolchain.json') }}
+      - run: python3 scripts/ci_tools.py --group format
+      - run: python3 scripts/engineering.py verify --group format
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: verification-format
+          path: build/verification/
+          retention-days: 14
 
   check:
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes iverilog
-      - run: make check
-      - run: python3 -m pip install yamllint==1.35.1
-      - run: yamllint .github .yamllint.yml
-      - name: Install actionlint
-        env:
-          GOBIN: ${{ runner.temp }}/actionlint-bin
-        run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          echo "${GOBIN}" >> "${GITHUB_PATH}"
-      - run: actionlint
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            ~/.cache/tenon-ci
+            ~/.cache/pip
+          key: tenon-check-${{ runner.os }}-${{ hashFiles('tools/toolchain.json') }}
+      - run: python3 scripts/ci_tools.py --group check
+      - run: python3 scripts/ci_gate.py --event-only
+      - run: python3 scripts/engineering.py verify --group check
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: verification-check
+          path: build/verification/
+          retention-days: 14
 
   sim:
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - run: sudo apt-get update && sudo apt-get install --no-install-recommends --yes iverilog
-      - run: make sim
+      - run: python3 scripts/engineering.py verify --group sim
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: verification-sim
+          path: build/verification/
+          retention-days: 14
+
+  tools-windows:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - run: python scripts/engineering.py verify --group tools
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: verification-windows
+          path: build/verification/
+          retention-days: 14
+
+  required:
+    name: ci-required
+    if: always()
+    needs: [format, check, sim, tools-windows]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Require every job to succeed
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_gate.py

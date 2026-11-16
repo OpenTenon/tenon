@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "task-start",
+      "skill": "tenon-task",
+      "prompt": "Prepare a bounded engineering task for adding a tooling regression test. Describe its branch, base, allowed files and handoff. Do not edit tracked files.",
+      "tokens": [
+        "dev-",
+        "dev",
+        "main"
+      ]
+    },
+    {
+      "id": "task-resume",
+      "skill": "tenon-task",
+      "prompt": "An interrupted engineering task has local edits. Inspect how this repository resumes tasks and checks cleanup safety. Preserve every local edit and do not delete anything.",
+      "tokens": [
+        "task.py",
+        "cleanup-check"
+      ]
+    },
+    {
+      "id": "verify-environment",
+      "skill": "tenon-verify",
+      "prompt": "Assess engineering verification readiness using the repository diagnostics. Keep missing dependencies explicit and show the verification evidence procedure. Do not install tools.",
+      "tokens": [
+        "doctor",
+        "verify"
+      ]
+    },
+    {
+      "id": "verify-stale",
+      "skill": "tenon-verify",
+      "prompt": "A previous verification report refers to a different source SHA. Determine whether it can be used for this engineering handoff, and inspect the evidence validator without modifying sources.",
+      "tokens": [
+        "SHA"
+      ]
+    },
+    {
+      "id": "generated-inventory",
+      "skill": "tenon-generated",
+      "prompt": "Inspect the complete generated artifact boundary, including placement Tcl and filler RTL. Use the existing inventory interface and keep the worktree unchanged.",
+      "tokens": [
+        "--list-outputs"
+      ]
+    },
+    {
+      "id": "generated-drift",
+      "skill": "tenon-generated",
+      "prompt": "A generated package file is reported stale. Inspect the owning source and the correct read-only diagnostic workflow. Do not regenerate or hand-edit any file.",
+      "tokens": [
+        "check-generated"
+      ]
+    },
+    {
+      "id": "physical-readiness",
+      "skill": "tenon-physical",
+      "prompt": "Assess whether the existing environment can perform an IHP real-library check. Record missing PDK/tool prerequisites. Do not start physical hardening or install anything.",
+      "tokens": [
+        "ihp130"
+      ]
+    },
+    {
+      "id": "physical-exception",
+      "skill": "tenon-physical",
+      "prompt": "Review the execution policy for a legacy command that disables Netgen LVS and the power-grid checker. Explain whether it is permitted by current repository rules. Do not execute it.",
+      "tokens": [
+        "LVS",
+        "PowerGrid"
+      ]
+    },
+    {
+      "id": "release-preparation",
+      "skill": "tenon-release",
+      "prompt": "Prepare a dev-to-main release readiness assessment using current refs and verification requirements. Do not commit, merge, tag, push, publish or open a PR.",
+      "tokens": [
+        "dev",
+        "main"
+      ]
+    },
+    {
+      "id": "ordinary-question",
+      "skill": null,
+      "prompt": "Explain in one paragraph why digital clocks have a frequency. This is an ordinary conceptual question; no repository work is requested.",
+      "tokens": []
+    }
+  ]
+}

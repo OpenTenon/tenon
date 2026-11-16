@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import subprocess
+import os
 from pathlib import Path
 
 from design_manifest import load_designs
@@ -23,7 +24,7 @@ def main() -> int:
         design_dir = ROOT / design["name"]
         output = BUILD / f"{design['name']}.vvp"
         compile_command = [
-            "iverilog",
+            os.environ.get("IVERILOG", "iverilog"),
             "-g2012",
             "-s",
             f"{design['top']}_tb",
@@ -33,12 +34,14 @@ def main() -> int:
             str(design_dir / testbench),
         ]
         print("+", " ".join(compile_command))
-        subprocess.run(compile_command, check=True)
-        run_command = ["vvp", str(output)]
+        subprocess.run(compile_command, check=True, timeout=120)
+        run_command = [os.environ.get("VVP", "vvp"), str(output)]
         print("+", " ".join(run_command))
-        subprocess.run(run_command, check=True)
+        subprocess.run(run_command, check=True, timeout=120)
         simulated += 1
 
+    if simulated == 0:
+        raise SystemExit("NOT_RUN: no behavioral smoke testbenches were selected")
     print(f"PASS: simulated {simulated} ICS55 smoke demonstration tops.")
     return 0
 
