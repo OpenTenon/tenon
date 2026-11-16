@@ -148,3 +148,34 @@ class ControllerMaintenanceTests(RepositoryFixture):
                 maintenance.prune_controllers(self.root, True)
             self.assertEqual(maintenance.prune_controllers(self.root)['removed'], [])
         self.assertTrue((self.store.root/'controllers'/commit).exists())
+
+
+class WorkerMaintenanceTests(RepositoryFixture):
+    def test_worker_publishes_lease_identity_before_its_first_queue_operation(self):
+        import task_worker
+        store = TaskStore(self.root)
+        def observe(repo, apply=False):
+            heartbeat = json.loads((store.root/'operations/worker-latest.json').read_text())
+            with (store.root/'locks/worker.lock').open('rb') as stream:
+                stream.seek(1)  # byte zero is the native Windows lock range
+                lease = json.loads(stream.read())
+            self.assertEqual(heartbeat['state'], 'STARTING')
+            self.assertEqual(heartbeat['lease_token'], lease['token'])
+            self.assertEqual(heartbeat['pid'], lease['pid'])
+            return {'tasks':[], 'mode':'read-only'}
+        with mock.patch.object(task_worker, 'reconcile', side_effect=observe):
+            self.assertFalse(task_worker.run(self.root, max_seconds=0.01)['enabled'])
+
+    def test_monthly_upkeep_waits_for_an_idle_queue(self):
+        import task_worker
+        store = TaskStore(self.root)
+        write_json(store.root/'worker.json', {'schema_version':1,'repo_id':store.repo_id,'enabled':True})
+        with mock.patch.object(task_worker, 'reconcile', return_value={'tasks':[{'state':'WAITING'}]}), \
+                mock.patch.object(maintenance, 'run_due') as upkeep:
+            task_worker.run(self.root, max_seconds=0.001, interval=0.001)
+            upkeep.assert_not_called()
+        with mock.patch.object(task_worker, 'reconcile', return_value={'tasks':[]}), \
+                mock.patch.object(maintenance, 'run_due', return_value={'status':'NOT_DUE'}) as upkeep:
+            value = task_worker.run(self.root, max_seconds=0.001)
+            self.assertEqual(value['maintenance']['status'], 'NOT_DUE')
+            upkeep.assert_called_once()

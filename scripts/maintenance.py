@@ -106,7 +106,9 @@ def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
         from task_store import lease_is_held
         if lease_is_held(lease_path):
             try:
-                lease = json.loads(lease_path.read_text(encoding="utf-8"))
+                with lease_path.open("rb") as stream:
+                    stream.seek(1)  # Windows byte-range locking protects byte zero.
+                    lease = json.loads(stream.read())
             except (OSError, ValueError):
                 lease = {}
             if (not observed.get("controller_commit") or observed.get("pid") != lease.get("pid")
