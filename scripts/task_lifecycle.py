@@ -362,6 +362,40 @@ class Lifecycle:
             command(primary,"worktree","remove",str(root))
         return self.finalize()
 
+    def complete_app_cleanup(self, receipt: Path) -> dict:
+        """Host-adapter recovery after a confirmed native archive was interrupted."""
+        task = self.task()
+        identity = task.get("managed_identity")
+        root = Path(task["worktree"]).resolve()
+        primary = worktrees(self.store.repo)[0]["path"]
+        if not identity or Path.cwd().resolve().is_relative_to(root) or Path(__file__).resolve().is_relative_to(root):
+            raise ValueError("Native recovery needs a managed task and an external executor")
+        record = json.loads(receipt.read_text(encoding="utf-8"))
+        payload = record.get("payload") if isinstance(record,dict) else None
+        workspace = payload.get("worktree") if isinstance(payload,dict) else None
+        if (not isinstance(workspace,dict) or record.get("attachmentType")!="archived_worktree" or record.get("identityKey")!=identity
+                or workspace.get("root")!=identity or workspace.get("hostId")!=task.get("managed_host_id","local")
+                or not isinstance(workspace.get("sourceGitRoot"),str) or not workspace["sourceGitRoot"]
+                or Path(workspace["sourceGitRoot"]).resolve()!=primary):
+            raise ValueError("Native archive receipt does not match this task/repository/host")
+        # This is an adapter receipt from list_artifacts, not permission to skip gates.
+        saved = self.operations()/"app-archive-receipt.json"
+        write_json(saved,record)
+        self.update("native-archive-confirmed",app_archive_receipt=str(saved))
+        result = self.cleanup()
+        if result["status"]=="CLEANED":
+            return result
+        if result["status"]!="NEEDS_APP_ARCHIVE":
+            raise ValueError("Native recovery has not passed all cleanup gates")
+        task = self.task()
+        errors = ownership_errors(self.store,task)
+        if errors:
+            raise ValueError("; ".join(errors))
+        archive_task(self.store,task)
+        # Native archiving already retained its recovery record. Never force removal.
+        command(primary,"worktree","remove",str(root))
+        return self.finalize()
+
     def finalize(self) -> dict:
         task = self.task()
         if task.get("status")=="CLEANED":
@@ -406,9 +440,10 @@ class Lifecycle:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action",choices=("deliver","resume","cleanup","finalize-cleanup","status"))
+    parser.add_argument("action",choices=("deliver","resume","cleanup","finalize-cleanup","complete-app-cleanup","status"))
     parser.add_argument("--repo",type=Path,default=ROOT)
     parser.add_argument("--id",required=True)
+    parser.add_argument("--app-archive-receipt",type=Path)
     args = parser.parse_args()
     try:
         lifecycle = Lifecycle(args.repo,args.id)
@@ -417,6 +452,10 @@ def main():
                 result = lifecycle.task()
             elif args.action in {"deliver","resume"}:
                 result = lifecycle.deliver()
+            elif args.action=="complete-app-cleanup":
+                if args.app_archive_receipt is None:
+                    raise ValueError("A native archived attachment receipt is required")
+                result = lifecycle.complete_app_cleanup(args.app_archive_receipt)
             elif args.action=="finalize-cleanup":
                 result = lifecycle.finalize()
             else:
