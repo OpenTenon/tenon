@@ -59,6 +59,8 @@ class Lifecycle:
         return path
 
     def verification(self, task: dict, root: Path, head: str):
+        from host_profile import validate_task_inputs
+        validate_task_inputs(task)
         if task.get("verified_head")==head:
             try:
                 validate_evidence(Path(task["verification_report"]),root,required_ids("all"))

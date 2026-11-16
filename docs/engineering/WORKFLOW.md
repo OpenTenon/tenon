@@ -99,6 +99,42 @@ independent scopes. One integrator owns shared interfaces and combined validatio
 
 ## Verification and CI
 
+Register an already available verifier once with `host configure
+--verify-command-json '["existing-validator", "{worktree}"]'`. Repeated `--input`
+arguments fingerprint external helper files; optional `--python-path` arguments
+name existing portable tool directories. No environment or credential files are
+copied and no software is installed. Python paths are activated only inside the
+audit/maintenance process context, then restored.
+
+New tasks with no explicit verifier snapshot the valid host command, profile SHA
+and helper hashes into their task/setup intent. An explicit verifier remains
+authoritative even if a stored profile is unavailable. Interrupted setups retain
+their recorded choice rather than adopting a later profile. Frozen helper inputs
+are checked before execution and before reusing verification evidence.
+
+`audit --ref REF [--published-rules]` resolves the requested ref once and audits
+the workflow, controller inventory, tool pins and optional published protection
+rules against that same commit. FAIL/BLOCKED produce a failing command status.
+`install --git-alias` can add a repository-local `git tenon` shortcut to the
+stable entry for discovery from old main checkouts. It records exact ownership,
+preserves unrelated local/global aliases and forwards arguments/exit codes.
+
+The fast policy gate also compares workflow jobs/needs, the controller inventory,
+branch-rule templates and immutable tool/action pins through `scripts/ci_contract.py`.
+It retains all fast checks, read-only CI tokens, current dev/main branch coverage
+and bounded jobs. The source audit uses the existing Linux PyYAML workflow parser;
+native Windows tests cover the semantic checker without installing that parser.
+`python3 scripts/ci_contract.py --root REPO --ref SHA` audits a committed tree.
+`python3 scripts/github_rules.py --audit --root REPO --ref SHA` compares published
+protection semantics and delayed branch deletion with that tree, and exits nonzero
+on drift. This is a read-only audit. Applying rule changes remains a separate
+explicit action using reviewed working-tree payloads.
+
+Tool preparation records total and Python/archive preparation time, verified
+archive-cache hits and downloaded bytes. An invalid cache is redownloaded and
+validated; cache hits still require SHA256 verification and safe extraction.
+The measurements cover lightweight linters, not PDK or system-package preparation.
+
 `make doctor`, `make verify`, `make verify-pdk TENON_PDK=...`, `make release-check`,
 `make tools-test`, `make policy-check` and `make adapter-compile` remain available.
 Windows supports pure Python diagnostics/tool tests; full checks use an existing
