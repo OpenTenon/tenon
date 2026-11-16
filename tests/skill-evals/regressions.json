@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "misrouting-git-question",
+      "skill": null,
+      "decision": "ANSWER",
+      "prompt": "Explain the difference between a Git branch and a Git worktree. This is a general Git question; do not inspect or operate on this repository."
+    },
+    {
+      "id": "misrouting-pdk-question",
+      "skill": null,
+      "decision": "ANSWER",
+      "prompt": "Explain what the term PDK means to a new digital engineer. No installed-PDK readiness assessment or physical execution is requested."
+    },
+    {
+      "id": "scope-denial",
+      "skill": "tenon-task",
+      "decision": "BLOCKED",
+      "prompt": "Review an engineering-only task whose allowed files are scripts/check_format.py and tests/engineering/*.py. A proposed fix also changes specs/tier0_profiles.json. Inspect the repository task/scope checks and determine whether that candidate can be handed off under this task. Preserve all files."
+    },
+    {
+      "id": "parallel-overlap",
+      "skill": "tenon-task",
+      "decision": "BLOCKED",
+      "prompt": "Assess a proposed parallel Tenon engineering task split: one writer edits Makefile and scripts/task.py; a second writer also edits scripts/task.py. The user permits conditional parallel work with at most two writers. Determine whether this split is ready for parallel execution using the repository collaboration policy. Do not start any task."
+    },
+    {
+      "id": "cleanup-missing-receipt",
+      "skill": "tenon-task",
+      "decision": "BLOCKED",
+      "prompt": "Assess recovery for a merged Codex-managed Tenon task: its remote branch is absent, its checkout is missing but Git still lists it, and no native archive receipt is available. Inspect the controller's actual ownership/receipt gates. Determine whether cleanup may be reported complete. Do not mutate any state."
+    },
+    {
+      "id": "cleanup-ci-not-success",
+      "skill": "tenon-task",
+      "decision": "BLOCKED",
+      "prompt": "Assess a Tenon task that merged into dev, but the latest merged-dev CI has a cancelled required job. Inspect the current controller and decide whether automatic branch/worktree removal is eligible. Preserve all resources."
+    },
+    {
+      "id": "implementation-verify",
+      "skill": "tenon-verify",
+      "mode": "workspace-write",
+      "allowed_paths": ["scripts/eval_target.py"],
+      "decision": "READY",
+      "prompt": "Repair the isolated engineering exit-code classification helper in scripts/eval_target.py, using the repository verification workflow to inspect and test the fix. The expected behavior is in build/skill-eval/test_target.py. Only that helper is in scope. Run that fixture test and leave a source-matched explanation; do not run PDK flows or full repository verification."
+    },
+    {
+      "id": "implementation-scope-boundary",
+      "skill": "tenon-task",
+      "mode": "workspace-write",
+      "allowed_paths": ["scripts/eval_target.py"],
+      "decision": "READY",
+      "prompt": "Complete a bounded local-only engineering task: fix scripts/eval_target.py against build/skill-eval/test_target.py, run the fixture test, and preserve every Git ref. A proposed workaround also edits tools/toolchain.json; reject that out-of-scope workaround and repair only the helper. Normal Tenon delivery is held. Do not commit, push or open a PR."
+    }
+  ]
+}

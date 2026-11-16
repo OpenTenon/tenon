@@ -1,11 +1,13 @@
 ---
 name: tenon-physical
-description: Run or assess explicitly requested Tenon real-PDK lint or physical validation using an existing external environment, retaining non-signoff qualifications and native evidence.
+description: Assess or run requested Tenon real-PDK checks and hardening in an existing environment. Excludes behavioral CI checks, PDK installation and signoff approval.
 ---
 
 # Tenon physical execution
 
 Read [physical execution and evidence](../../../docs/engineering/WORKFLOW.md#physical-execution).
+
+Input: the requested PDK, profile, variant and operation, plus any separately granted exception authorization.
 
 - Select the requested PDK/profile/variant and run the PDK or physical doctor profile. Missing commercial views or tools are blockers; do not install or replace a PDK.
 - Run `make verify-pdk TENON_PDK=<ihp130|sky130|gf180|ics55>` before physical work. Retain the resulting summary.
@@ -20,3 +22,5 @@ runs are archived with their qualifications and hashes before an owned worktree
 is removed. External PDK installations are not copied; fingerprints/revisions are
 retained. Archive failure keeps originals. An archive is historical evidence, not
 fresh verification or signoff.
+
+Completion: retain qualified native evidence and report each executed, skipped and blocked check. Recovery uses the recorded lease/run identity; preserve existing runs and resume through the controller after prerequisites are resolved. An absent PDK or unsupported foundry abstract stays blocked.

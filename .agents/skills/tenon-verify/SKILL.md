@@ -1,11 +1,13 @@
 ---
 name: tenon-verify
-description: Verify a completed Tenon engineering change or prepare its review handoff with source-matched check evidence. Use after code or build/test behavior changes.
+description: Verify a Tenon code or engineering-tool change and assess source-matched review evidence. Excludes conceptual questions and manufacturing signoff.
 ---
 
 # Tenon verification
 
-Use [the shared engineering workflow](../../../docs/engineering/WORKFLOW.md) and existing repository rules.
+Input: the candidate checkout and requested verification level; include the task ID or existing evidence when resuming.
+
+Use [verification and CI](../../../docs/engineering/WORKFLOW.md#verification-and-ci) for commands and evidence requirements.
 
 1. Run `make doctor` when environment capabilities are uncertain. On Windows, the Python diagnostic is available without Make.
 2. Run `make verify`; CI uses the same implementation in format, check and sim groups. Do not replace required checks with a smaller personal checklist.
@@ -23,3 +25,7 @@ a bounded log tail; full reports are retained and archived outside the worktree.
 Cleanup is complete only after dev is green, archives verify and owned resources
 are confirmed absent. Historical archived evidence never replaces current-source
 validation. Main merging remains human.
+
+Completion: retain the summary and logs with the exact source identity, executed coverage and explicit missing checks. A blocked check is complete as a diagnosis, not a passing handoff. Recovery fixes the recorded prerequisite or task-caused failure, then verifies the changed candidate; unchanged valid evidence can be reused.
+
+For Skill or model regression work, read [evaluation and budget limits](references/evaluation.md). Model execution is separately opt-in.
