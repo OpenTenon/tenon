@@ -29,6 +29,36 @@ def expected_head(task: dict) -> str:
     return task.get("delivery",{}).get("head_sha") or task.get("head_sha") or task.get("source",{}).get("sha","")
 
 
+def analysis_record(value: dict) -> bool:
+    return (value.get("kind") == "engineering" and value.get("role") in {"reviewer", "coordinator"}
+            and value.get("owns_workspace") is False)
+
+
+def declared_artifacts(store: TaskStore, task: dict, root: Path) -> tuple[list[Path], list[str]]:
+    """Only exact, qualified build files are added; unknown ignored files stay protected."""
+    files, errors = [], []
+    records = [task] + [value for value in store.all() if value["task_id"] != task["task_id"]
+        and analysis_record(value) and Path(value["worktree"]).resolve() == root]
+    for value in records:
+        observations = (value.get("acceptance") or value.get("output_contract") or {}).get("outputs", [])
+        hashes = {item["path"]: item.get("sha256") for item in observations}
+        for name in value.get("outputs", []):
+            if not name.startswith("build/"):
+                continue
+            if analysis_record(value) and not hashes.get(name):
+                # An unfinished analysis promises no delivered artifact. Any
+                # existing unqualified file remains an unknown ignored file.
+                continue
+            path = (root / name).resolve()
+            if not path.is_relative_to(root) or not path.is_file() or not hashes.get(name):
+                errors.append("Declared artifact is missing, outside the task, or unqualified: " + name)
+            elif digest(path) != hashes[name]:
+                errors.append("Declared artifact changed after qualification: " + name)
+            elif path not in files:
+                files.append(path)
+    return files, errors
+
+
 def ownership_errors(store: TaskStore, task: dict, absent_ok: bool = False) -> list[str]:
     errors = []
     root = Path(task["worktree"]).resolve()
@@ -70,9 +100,15 @@ def ownership_errors(store: TaskStore, task: dict, absent_ok: bool = False) -> l
         errors.append("Missing worktree registration has changed or is locked")
     for value in store.all():
         if value["task_id"]!=task["task_id"] and value.get("status")!="CLEANED" and Path(value["worktree"]).resolve()==root:
-            errors.append("Another task owns the worktree")
+            if analysis_record(value):
+                if value.get("execution_lease", {}).get("state") != "completed":
+                    errors.append("An analysis still needs this source snapshot: " + value["task_id"])
+            else:
+                errors.append("Another task owns the worktree")
     if root.exists() and not empty_unregistered:
-        archived = archive_roots(root)
+        artifacts, artifact_errors = declared_artifacts(store, task, root)
+        errors.extend(artifact_errors)
+        archived = archive_roots(root) + artifacts
         disposables = [(root/name).resolve() for name in task.get("disposable_roots",[])]
         for item in disposables:
             if not item.is_relative_to(root) or item==root:
@@ -174,7 +210,10 @@ def verify_archive(path: Path, expected_sha: str | None = None) -> dict:
 
 def _archive_sources(store: TaskStore, task: dict, root: Path) -> tuple[dict, list]:
     sources, external = {}, []
-    for folder in archive_roots(root):
+    artifacts, errors = declared_artifacts(store, task, root)
+    if errors:
+        raise ValueError("; ".join(errors))
+    for folder in archive_roots(root) + artifacts:
         for path in ([folder] if folder.is_file() else sorted(folder.rglob("*"))):
             if path.is_symlink() and not path.resolve().is_relative_to(root):
                 external.append({"path":path.relative_to(root).as_posix(),"target":os.readlink(path),
