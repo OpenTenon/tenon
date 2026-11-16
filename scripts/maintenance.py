@@ -65,6 +65,23 @@ def restore_check(repo: Path, task_id: str) -> dict:
             "archive_sha256": task["archive"]["sha256"], "qualification": "private recovery exercise; not source verification or signoff"}
 
 
+def registered_host(store: TaskStore) -> str | None:
+    for path in (store.root / "host.json", store.root / "bin/installation.json"):
+        if not path.exists():
+            continue
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if value.get("repo_id") != store.repo_id:
+            raise ValueError("Host/entry registration belongs to another repository")
+        if value.get("host_platform") in {"nt", "posix"}:
+            return value["host_platform"]
+        primary = str(value.get("repo", ""))
+        if re.match(r"^[A-Za-z]:[/\\]", primary) or primary.startswith("\\\\"):
+            return "nt"
+        if primary.startswith("/"):
+            return "posix"
+    return None
+
+
 def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
     retained = set()
     executing = Path(__file__).resolve().parents[1]
@@ -81,10 +98,11 @@ def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
             pieces = str(task["controller"]).replace("\\", "/").split("/")
             retained.update(item for item in pieces if re.fullmatch(r"[0-9a-f]{40}", item))
     heartbeat = store.root / "operations/worker-latest.json"
-    unknown_worker = False
+    foreign = registered_host(store) not in {None, os.name}
+    unknown_worker = foreign
     observed = json.loads(heartbeat.read_text(encoding="utf-8")) if heartbeat.exists() else {}
     lease_path = store.root / "locks/worker.lock"
-    if lease_path.exists():
+    if lease_path.exists() and not foreign:
         from task_store import lease_is_held
         if lease_is_held(lease_path):
             try:
@@ -127,6 +145,10 @@ def controller_inventory(store: TaskStore) -> dict:
 
 def prune_controllers(repo: Path, apply: bool = False) -> dict:
     store = TaskStore(repo)
+    if not apply:
+        return {"status": "PASS", "mode": "read-only", **controller_inventory(store), "removed": []}
+    if registered_host(store) not in {None, os.name}:
+        raise ValueError("Controller reclamation must run on the registered native host")
     removed = []
     with FileLease(store.root / "locks/entry-install.lock"), FileLease(store.root / "locks/integration.lock"):
         inventory = controller_inventory(store)

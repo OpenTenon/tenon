@@ -138,3 +138,13 @@ class ControllerMaintenanceTests(RepositoryFixture):
             self.assertTrue(result['active_worker_identity_unknown'])
         self.assertTrue((self.store.root/'controllers'/commit).exists())
         self.assertEqual(maintenance.prune_controllers(self.root, True)['removed'], [commit])
+
+    def test_foreign_host_reclamation_is_rejected_before_native_locks(self):
+        commit = self.version("print('native ownership')\n")
+        write_json(self.store.root/'host.json', {'schema_version':1, 'repo_id':self.store.repo_id,
+                   'host_platform':'posix' if os.name == 'nt' else 'nt'})
+        with mock.patch.object(maintenance.FileLease, '__enter__', side_effect=AssertionError('foreign write lock')):
+            with self.assertRaises(ValueError):
+                maintenance.prune_controllers(self.root, True)
+            self.assertEqual(maintenance.prune_controllers(self.root)['removed'], [])
+        self.assertTrue((self.store.root/'controllers'/commit).exists())
