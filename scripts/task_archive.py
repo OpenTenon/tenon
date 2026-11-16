@@ -4,8 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
+import re
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from engineering_common import digest, git, source_state, utc_now, write_json
 from task_store import TaskStore, activity_blockers
 
@@ -136,25 +138,74 @@ def archive_roots(root: Path) -> list[Path]:
     return [path for path in roots if path.exists()]
 
 
+def safe_relative(name: str) -> Path:
+    posix, windows = PurePosixPath(name), PureWindowsPath(name)
+    parts = name.split("/")
+    reserved = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
+        prefix + digit for prefix in ("COM", "LPT") for digit in "123456789¹²³"}
+    if (not name or "\\" in name or posix.is_absolute() or windows.is_absolute() or windows.drive
+            or any(not part or part in {".", ".."} or part.endswith((".", " "))
+                   or any(ord(char) < 32 or char in '<>:"|?*' for char in part)
+                   or part.split(".")[0].rstrip(" ").upper() in reserved for part in parts)):
+        raise ValueError("Unsafe archive path: " + name)
+    return Path(*parts)
+
+
+def verify_controller_source(directory: Path, repo: Path, expected_commit: str | None = None) -> dict:
+    manifest = json.loads((directory / "controller.json").read_text(encoding="utf-8"))
+    commit = expected_commit or directory.name
+    if (manifest.get("schema_version") != 1 or manifest.get("commit") != commit
+            or directory.name != commit or not re.fullmatch(r"[0-9a-f]{40}", commit)):
+        raise ValueError("Controller identity/version differs")
+    entries = manifest.get("files", [])
+    if not isinstance(entries, list) or any(not isinstance(item, dict) or not isinstance(item.get("path"), str) for item in entries):
+        raise ValueError("Invalid controller inventory")
+    names = [item["path"] for item in entries]
+    expected = git(repo,"ls-tree","-r","--name-only",commit,"scripts/").decode().splitlines()
+    if "scripts/task_lifecycle.py" not in names or len(names) != len(set(names)) or sorted(names) != sorted(expected):
+        raise ValueError("Controller inventory differs from its source commit")
+    for item in entries:
+        path = (directory / safe_relative(item["path"])).resolve()
+        source_hash = hashlib.sha256(git(repo,"show",commit+":"+item["path"])).hexdigest()
+        if not path.is_relative_to(directory.resolve()) or digest(path) != item.get("sha256") or source_hash != item.get("sha256"):
+            raise ValueError("Controller payload/manifest differs from committed source: " + item["path"])
+    return manifest
+
+
 def verify_archive(path: Path, expected_sha: str | None = None) -> dict:
     if expected_sha and digest(path)!=expected_sha:
         raise ValueError("Task archive hash does not match")
-    with zipfile.ZipFile(path) as archive:
-        manifest = json.loads(archive.read("manifest.json"))
-        if manifest.get("schema_version")!=1:
-            raise ValueError("Unsupported archive manifest")
-        entries = manifest.get("files",[])
-        names = [item["path"] for item in entries]
-        if len(names)!=len(set(names)) or set(archive.namelist())!={"manifest.json",*names}:
-            raise ValueError("Archive inventory is incomplete or duplicated")
-        for item in entries:
-            relative = Path(item["path"])
-            if relative.is_absolute() or ".." in relative.parts:
-                raise ValueError("Unsafe archive path")
-            payload = archive.read(item["path"])
-            if len(payload)!=item["size"] or hashlib.sha256(payload).hexdigest()!=item["sha256"]:
-                raise ValueError("Archive payload hash does not match: "+item["path"])
-    return manifest
+    try:
+        with zipfile.ZipFile(path) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            if manifest.get("schema_version")!=1:
+                raise ValueError("Unsupported archive manifest")
+            entries = manifest.get("files",[])
+            if not isinstance(entries, list) or any(not isinstance(item, dict)
+                    or not isinstance(item.get("path"), str) or type(item.get("size")) is not int
+                    or item["size"] < 0 or not re.fullmatch(r"[0-9a-f]{64}", str(item.get("sha256", ""))) for item in entries):
+                raise ValueError("Invalid archive entry schema")
+            names = [item["path"] for item in entries]
+            inventory = archive.namelist()
+            if (len(names)!=len(set(name.casefold() for name in names))
+                    or len(inventory)!=len(set(name.casefold() for name in inventory))
+                    or set(inventory)!={"manifest.json",*names}):
+                raise ValueError("Archive inventory is incomplete or duplicated")
+            for item in entries:
+                safe_relative(item["path"])
+                info = archive.getinfo(item["path"])
+                if stat.S_ISLNK(info.external_attr >> 16) or info.file_size != item["size"]:
+                    raise ValueError("Archive entry type/size differs: " + item["path"])
+                value, size = hashlib.sha256(), 0
+                with archive.open(info) as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                        value.update(chunk)
+                        size += len(chunk)
+                if size!=item["size"] or value.hexdigest()!=item["sha256"]:
+                    raise ValueError("Archive payload hash does not match: "+item["path"])
+        return manifest
+    except (zipfile.BadZipFile, EOFError, RuntimeError, NotImplementedError) as error:
+        raise ValueError("Invalid task archive: " + str(error)) from error
 
 
 def _archive_sources(store: TaskStore, task: dict, root: Path) -> tuple[dict, list]:
@@ -249,10 +300,7 @@ def deploy_controller(store: TaskStore, commit: str) -> Path:
     directory = store.root/"controllers"/commit
     manifest_path = directory/"controller.json"
     if manifest_path.exists():
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        for item in manifest["files"]:
-            if digest(directory/item["path"])!=item["sha256"]:
-                raise ValueError("Deployed controller was modified")
+        verify_controller_source(directory, store.repo, commit)
         return directory/"scripts/task_lifecycle.py"
     files = git(store.repo,"ls-tree","-r","--name-only",commit,"scripts/").decode().splitlines()
     if "scripts/task_lifecycle.py" not in files:

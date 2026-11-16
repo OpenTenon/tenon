@@ -278,6 +278,8 @@ def parser() -> argparse.ArgumentParser:
     install_command = commands.add_parser("install")
     install_command.add_argument("--git-alias",action="store_true",help="Install an owned per-repository git tenon shortcut if the name is free")
     commands.add_parser("doctor")
+    maintenance = commands.add_parser("maintenance")
+    maintenance.add_argument("maintenance_args", nargs=argparse.REMAINDER)
     host = commands.add_parser("host").add_subparsers(dest="host_command",required=True)
     configure = host.add_parser("configure")
     configure.add_argument("--verify-command-json",required=True)
@@ -339,6 +341,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "doctor":
             value = {"status": "READY" if shutil.which("git") else "BLOCKED", "repo": str(repo),
                      "capabilities": capabilities(), "dev_sha": git(repo, "rev-parse", "origin/dev").decode().strip()}
+        elif args.command == "maintenance":
+            return subprocess.run([sys.executable, str(Path(__file__).with_name("maintenance.py")),
+                "--repo", str(repo), *args.maintenance_args], cwd=repo).returncode
         elif args.command == "reconcile":
             from task_queue import reconcile
             value = reconcile(repo, apply=args.apply)
