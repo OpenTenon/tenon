@@ -136,6 +136,17 @@ class PhysicalFailureTests(fixtures.PhysicalEvidenceTests):
     test_workspace_lease_excludes_second_run = None
     test_native_stage_hash_changes_invalidate_evidence = None
 
+    def test_aliased_workspace_and_resolved_config_share_one_native_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            alias = Path(directory) / "workspace-alias"
+            try:
+                alias.symlink_to(self.root.resolve(), target_is_directory=True)
+            except OSError:
+                self.skipTest("This host does not permit directory symlinks")
+            run = physical.PhysicalRun(alias, "ihp130", self.config.resolve(), "tenon-qfn32")
+            self.assertEqual(run.summary["config"], "flow/ihp130/config.yaml")
+            self.assertEqual(run.native.resolve(), self.config.resolve().parent / "runs/tenon-qfn32")
+
     def test_missing_environment_blocks_before_process_launch(self):
         run = physical.PhysicalRun(self.root, "ihp130", self.config, "tenon-qfn32")
         with mock.patch.object(physical, "doctor", return_value={"tools":{"librelane":{"status":"BLOCKED"}}}), mock.patch.object(physical, "execute") as execute:

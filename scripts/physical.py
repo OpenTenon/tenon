@@ -71,6 +71,9 @@ def validate_policy(command: list[str], pdk: str, tag: str) -> tuple[list[str], 
 
 class PhysicalRun:
     def __init__(self, root: Path, pdk: str, config: Path, tag: str, timeout: float = 21600):
+        # Resolve both inputs together: Windows TEMP may use an 8.3 alias while
+        # resolving the configuration expands it to the long directory name.
+        root = root.resolve()
         self.root, self.pdk, self.config, self.tag, self.timeout = root, pdk, config.resolve(), tag, timeout
         if not self.config.is_relative_to(root.resolve()) or not self.config.is_file():
             raise ValueError("Physical configuration must be an existing repository input")
@@ -154,6 +157,7 @@ class PhysicalRun:
 
 
 def read_run_evidence(native: Path, root: Path = ROOT) -> dict:
+    root, native = root.resolve(), native.resolve()
     pointer = json.loads((native / "tenon-run.json").read_text(encoding="utf-8"))
     path = (root / pointer["evidence"]).resolve()
     if not path.is_relative_to(native.parent.resolve()) or digest(path) != pointer.get("sha256"):
