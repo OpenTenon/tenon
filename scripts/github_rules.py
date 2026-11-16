@@ -10,10 +10,17 @@ from engineering_common import ROOT, git
 
 
 def api(repository: str, endpoint: str, body: Path | None = None):
-    command = ["gh", "api", f"repos/{repository}/{endpoint}", "-H", "Accept: application/vnd.github+json"]
+    resource = "repos/" + repository + ("/" + endpoint if endpoint else "")
+    command = ["gh", "api", resource, "-H", "Accept: application/vnd.github+json"]
     if body:
         command.extend(["--method", "PUT", "--input", str(body)])
-    return json.loads(subprocess.check_output(command, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=60))
+    try:
+        payload = subprocess.check_output(command, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=60)
+    except subprocess.CalledProcessError as error:
+        raw = error.stderr or b""
+        diagnostic = raw.decode("utf-8",errors="replace") if isinstance(raw,bytes) else str(raw)
+        raise RuntimeError("GitHub API request failed: " + (diagnostic.strip()[-3000:] or str(error))) from error
+    return json.loads(payload)
 
 
 def normalize(observed: dict) -> dict:
@@ -74,7 +81,7 @@ def main():
     if args.audit:
         try:
             result = audit(args.repository, args.root.resolve(), args.ref)
-        except (OSError, ValueError, subprocess.SubprocessError) as error:
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             result = {"status": "BLOCKED", "reason": str(error)}
         print(json.dumps(result, indent=2))
         return 0 if result["status"] == "PASS" else 2

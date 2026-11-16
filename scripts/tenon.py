@@ -278,6 +278,9 @@ def parser() -> argparse.ArgumentParser:
     install_command = commands.add_parser("install")
     install_command.add_argument("--git-alias",action="store_true",help="Install an owned per-repository git tenon shortcut if the name is free")
     commands.add_parser("doctor")
+    measuring = commands.add_parser("metrics")
+    measuring.add_argument("--remote",action="store_true",help="Explicitly query remote heads; default observations are local only")
+    measuring.add_argument("--month",help="Include evidence-linked improvement items for UTC month YYYY-MM")
     maintenance = commands.add_parser("maintenance")
     maintenance.add_argument("maintenance_args", nargs=argparse.REMAINDER)
     host = commands.add_parser("host").add_subparsers(dest="host_command",required=True)
@@ -338,6 +341,12 @@ def main(argv: list[str] | None = None) -> int:
             value = {"status":"CONFIGURED",**load(repo)}
         elif args.command == "audit":
             value = audit(repo,args.ref,args.published_rules)
+        elif args.command == "metrics":
+            from engineering_metrics import collect, improvement_items
+            value = collect(repo,probe_remote=args.remote)
+            value["status"] = "BLOCKED" if value.get("diagnostics") else "OBSERVED"
+            if args.month is not None:
+                value["improvement_items"] = improvement_items(value,args.month)
         elif args.command == "doctor":
             value = {"status": "READY" if shutil.which("git") else "BLOCKED", "repo": str(repo),
                      "capabilities": capabilities(), "dev_sha": git(repo, "rev-parse", "origin/dev").decode().strip()}

@@ -6,6 +6,10 @@ import hashlib
 import json
 import os
 import subprocess
+import shutil
+import contextlib
+import io
+import sys
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -226,6 +230,135 @@ class CollectorTests(RepositoryFixture):
         result=metrics.collect(self.root,as_of=NOW)
         self.assertFalse(result["initialized"])
         self.assertEqual(self.files(),before)
+
+
+class WiringTests(RepositoryFixture):
+    def seed(self,name,merged=True,**extra):
+        store=TaskStore(self.root)
+        return store.create({"task_id":name,"status":"CLEANED" if merged else "READY","branch":"dev-"+name,
+            "worktree":str(self.root/"build/retired"/name),"host_platform":os.name,
+            "started_at":"2026-11-16T10:00:00Z","delivered_at":"2026-11-16T11:00:00Z" if merged else None,
+            "cleaned_at":"2026-11-16T11:01:00Z" if merged else None,"delivery":{"merged":merged},**extra})
+
+    def records(self):
+        base=self.root/".git/tenon"
+        return {str(path.relative_to(base)):path.read_bytes() for folder in ("tasks","queue") for path in (base/folder).glob("*") if path.is_file()}
+
+    def test_legacy_metrics_threshold_and_unknown_counter_semantics(self):
+        import task as task_module
+        for index in range(19):self.seed("sample-"+str(index))
+        self.seed("finished-only",False,completed_at=NOW,human_interventions=True,rework_count=-1)
+        value=task_module.metrics(self.root/"build/tasks")
+        self.assertEqual(value["finished_tasks"],20)
+        self.assertEqual(value["delivered_tasks"],19)
+        self.assertFalse(value["baseline_ready"])
+        self.assertIsNone(value["human_interventions"])
+        self.assertIsNone(value["rework_count"])
+        self.assertEqual(value["intervention_samples"],0)
+        self.assertEqual(value["engineering_metrics_v1"]["schema_version"],1)
+        self.seed("twentieth",human_interventions=0,rework_count=0)
+        value=task_module.metrics(self.root/"build/tasks")
+        self.assertTrue(value["baseline_ready"])
+        self.assertEqual(value["human_interventions"],0)
+        self.assertEqual(value["intervention_samples"],1)
+
+    def test_real_stable_cli_metrics_runs_from_old_main_shared_metadata_without_repairs(self):
+        import tenon
+        from test_entrypoint import Backend
+        from test_engineering import ROOT
+        initial=self.run_git("rev-parse","HEAD").decode().strip()
+        shutil.copytree(ROOT/"scripts",self.root/"scripts",ignore=shutil.ignore_patterns("__pycache__"))
+        self.run_git("add","scripts");self.run_git("commit","--quiet","-m","metrics runtime fixture")
+        self.run_git("update-ref","refs/remotes/origin/dev","HEAD")
+        self.run_git("checkout","--quiet","-b","main",initial)
+        self.assertFalse((self.root/"scripts").exists())
+        installed=tenon.install(self.root,Backend())
+        self.seed("visible-shared-task")
+        before=self.records();refs=self.run_git("for-each-ref")
+        result=subprocess.run([sys.executable,installed["entry"],"metrics","--month","2026-11"],cwd=self.root,
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False)
+        self.assertEqual(result.returncode,0,result.stderr.decode(errors="replace"))
+        value=json.loads(result.stdout)
+        self.assertEqual(value["status"],"OBSERVED")
+        self.assertEqual(value["tasks"],1)
+        self.assertEqual(value["improvement_items"]["month"],"2026-11")
+        self.assertFalse(value["remote_probe_requested"])
+        self.assertEqual(self.records(),before)
+        self.assertEqual(self.run_git("for-each-ref"),refs)
+        self.assertEqual(self.run_git("branch","--show-current").strip(),b"main")
+
+    def test_metrics_diagnostics_return_failure_and_do_not_claim_signoff(self):
+        import tenon
+        report=metrics.summarize([],as_of=NOW,diagnostics=[{"issue":"incomplete-observation"}])
+        with mock.patch.object(metrics,"collect",return_value=report),contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(tenon.main(["--repo",str(self.root),"metrics"]),2)
+        value=json.loads(output.getvalue())
+        self.assertEqual(value["status"],"BLOCKED")
+        self.assertIn("no hardware",value["qualification"])
+
+    def test_reconcile_blocked_item_has_non_success_status_and_waiting_is_pending(self):
+        import tenon,task_queue
+        from engineering_common import write_json
+        store=TaskStore(self.root)
+        path=store.root/"queue/fixture.json"
+        write_json(path,{"schema_version":1,"repo_id":store.repo_id,"task_id":"fixture","state":"BLOCKED"})
+        before=path.read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(tenon.main(["--repo",str(self.root),"reconcile","--all","--once"]),2)
+        self.assertEqual(json.loads(output.getvalue())["status"],"BLOCKED")
+        self.assertEqual(path.read_bytes(),before)
+        write_json(path,{"schema_version":1,"repo_id":store.repo_id,"task_id":"fixture","state":"WAITING_APP"})
+        pending=task_queue.reconcile(self.root)
+        self.assertEqual(pending["status"],"WAITING")
+        self.assertNotEqual(pending["status"],"CLEANED")
+
+    def test_windows_gh_timeout_and_explicit_rate_limit_are_transient_but_policy_errors_are_not(self):
+        import task_queue
+        message='Get "https://api.github.com/repos/OpenTenon/tenon/pulls/13": dial tcp 198.18.0.17:443: connectex: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.'
+        for error in (RuntimeError(message), subprocess.CalledProcessError(1,["gh","api"],stderr=message.encode()),
+                      RuntimeError("HTTP 429: Too Many Requests"),RuntimeError("API rate limit exceeded"),RuntimeError("secondary rate limit")):
+            with self.subTest(error=error):self.assertEqual(task_queue.classify(error),"TRANSIENT")
+        for error in (ValueError("Evidence timeout fixture changed"),ValueError("Ownership changed"),
+                      RuntimeError("HTTP 401: Bad credentials"),RuntimeError("Resource not accessible by integration (HTTP 403)"),
+                      subprocess.CalledProcessError(128,["git","-c","core.sshCommand=ssh -o ConnectTimeout=10","push"],stderr=b"Permission denied (publickey)")):
+            with self.subTest(error=error):self.assertEqual(task_queue.classify(error),"POLICY")
+
+    def test_github_root_and_normal_endpoints_use_canonical_argv_and_keep_diagnostics(self):
+        import github_rules
+        with mock.patch.object(subprocess,"check_output",return_value=b"{}") as query:
+            github_rules.api("OpenTenon/tenon","")
+            self.assertEqual(query.call_args.args[0][2],"repos/OpenTenon/tenon")
+            self.assertNotIn("--method",query.call_args.args[0])
+            github_rules.api("OpenTenon/tenon","branches/dev/protection")
+            self.assertEqual(query.call_args.args[0][2],"repos/OpenTenon/tenon/branches/dev/protection")
+        failure=subprocess.CalledProcessError(1,["gh","api"],stderr=b"HTTP 503: service unavailable fixture")
+        with mock.patch.object(subprocess,"check_output",side_effect=failure):
+            with self.assertRaisesRegex(RuntimeError,"HTTP 503"):
+                github_rules.api("OpenTenon/tenon","")
+
+    def test_monthly_metrics_suggestions_preserve_failure_status_records_and_existing_work(self):
+        import maintenance
+        self.seed("historical-task")
+        store=TaskStore(self.root)
+        directory=store.root/"maintenance/fixture"
+        directory.mkdir(parents=True)
+        prepared={"status":"FAIL","checks":[{"id":"existing-audit-failure","status":"FAIL","reason":"preserve me"}],
+            "report":str(directory/"summary.json"),"work_items":str(directory/"work-items.json")}
+        before=self.records();source=(self.root/"input.txt").read_bytes()
+        native=metrics.collect
+        with mock.patch.object(maintenance,"audit",return_value=prepared),mock.patch.object(metrics,"collect",wraps=native) as collect:
+            result=maintenance.run_due(self.root,force=True)
+        self.assertEqual(result["status"],"FAIL")
+        self.assertFalse(collect.call_args.kwargs["probe_remote"])
+        self.assertEqual(self.records(),before)
+        self.assertEqual((self.root/"input.txt").read_bytes(),source)
+        self.assertTrue(Path(result["metrics_report"]).is_file())
+        self.assertTrue(Path(result["improvement_items_report"]).is_file())
+        items=json.loads(Path(result["work_items"]).read_text())
+        self.assertIn("existing-audit-failure",{item["check"] for item in items})
+        self.assertIn("metrics:insufficient-delivery-baseline",{item["check"] for item in items})
+        state=json.loads((store.root/"maintenance-state.json").read_text())
+        self.assertEqual(state["last_status"],"FAIL")
 
 
 if __name__=="__main__":
