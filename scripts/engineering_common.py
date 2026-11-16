@@ -38,7 +38,7 @@ def write_json(path: Path, value: object) -> None:
 
 
 def git(root: Path, *args: str) -> bytes:
-    return subprocess.check_output(["git", "-C", str(root), *args], stderr=subprocess.PIPE)
+    return subprocess.check_output(["git", "--no-optional-locks", "-C", str(root), *args], stderr=subprocess.PIPE)
 
 
 def source_state(root: Path = ROOT) -> dict:
@@ -218,15 +218,23 @@ class PhysicalLock:
 
 
 def record_attempt(root: Path, report: Path, summary: dict) -> None:
-    """Append historical attempts to the active task without changing tracked source."""
-    for path in (root / "build/tasks").glob("*.json"):
-        value = json.loads(path.read_text(encoding="utf-8"))
-        if value.get("status") != "ACTIVE" or value.get("branch") != summary["source"]["branch"]:
-            continue
+    """Persist task attempts outside disposable worktrees under a task transaction."""
+    from task_store import TaskStore
+    store = TaskStore(root)
+    task = store.for_worktree(root)
+    if not task or task.get("status") in {"CLEANED"}:
+        return
+    attempt = {"run_id":summary["run_id"],"report_relative":report.relative_to(root).as_posix(),
+               "report":str(report),"sha256":digest(report),"source":summary["source"],
+               "status":summary["status"],"group":summary.get("group"),
+               "started_at":summary["started_at"],"completed_at":summary["completed_at"],
+               "preparation":summary.get("preparation",[])}
+    if task.get("host_platform")!=os.name:
+        store.enqueue_attempt(task["task_id"],attempt)
+        return
+    def append(value):
         attempts = value.setdefault("verification_attempts", [])
-        if not any(item.get("run_id") == summary["run_id"] for item in attempts):
-            attempts.append({"run_id": summary["run_id"], "report": str(report), "sha256": digest(report),
-                             "source": summary["source"], "status": summary["status"], "group": summary.get("group"),
-                             "started_at": summary["started_at"], "completed_at": summary["completed_at"],
-                             "preparation": summary.get("preparation", [])})
-            write_json(path, value)
+        if not any(item.get("run_id")==summary["run_id"] for item in attempts):
+            attempts.append(attempt)
+        return value
+    store.mutate(task["task_id"],append,"verification-attempt")

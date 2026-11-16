@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
 import re
 import statistics
 import subprocess
@@ -12,12 +13,11 @@ from datetime import datetime
 from pathlib import Path
 from engineering import required_ids
 from engineering_common import ROOT, digest, git, source_state, utc_now, validate_evidence, write_json
+from task_store import TaskStore, activity_blockers
 
 
 def task_path(identifier: str, root: Path = ROOT) -> Path:
-    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}", identifier):
-        raise ValueError("Task ID must be a short path-safe identifier")
-    return root / "build/tasks" / (identifier + ".json")
+    return TaskStore(root).path(identifier)
 
 
 def changed_paths(root: Path, base: str) -> list[str]:
@@ -31,7 +31,8 @@ def scope_errors(task: dict, root: Path) -> list[str]:
             if not any(fnmatch.fnmatchcase(name, pattern) for pattern in task["allowed_paths"])]
 
 
-def start(identifier: str, goal: str, allowed: list[str], checks: list[str], dependencies: list[str], root: Path = ROOT) -> dict:
+def start(identifier: str, goal: str, allowed: list[str], checks: list[str], dependencies: list[str], root: Path = ROOT, managed_identity: str | None = None, verify_command: list[str] | None = None, delivery_mode: str = "auto") -> dict:
+    root = root.resolve()
     state = source_state(root)
     if not state["branch"].startswith("dev-"):
         raise ValueError("Start from a dev-<task-id>-<topic> branch created from dev")
@@ -42,18 +43,19 @@ def start(identifier: str, goal: str, allowed: list[str], checks: list[str], dep
     path = task_path(identifier, root)
     if path.exists():
         raise FileExistsError("Task already exists; resume with status/handoff")
-    value = {"schema_version": 1, "task_id": identifier, "goal": goal, "base_ref": "origin/dev",
-             "base_sha": base, "branch": state["branch"], "worktree": str(root), "started_at": utc_now(),
+    value = {"schema_version": 2, "task_id": identifier, "goal": goal, "base_ref": "origin/dev",
+             "base_sha": base, "original_base_sha":base, "branch": state["branch"], "worktree": str(root), "started_at": utc_now(),
              "allowed_paths": allowed, "checks": checks, "dependencies": dependencies,
-             "integration_target": "dev", "main_merge_operator": "human", "status": "ACTIVE"}
-    write_json(path, value)
-    return value
+             "integration_target": "dev", "main_merge_operator": "human", "status": "ACTIVE",
+             "host_platform":os.name,"owner_id":__import__("uuid").uuid4().hex,
+             "managed_identity":managed_identity,"verify_command":verify_command,"delivery_mode":delivery_mode}
+    return TaskStore(root).create(value)
 
 
 def handoff(identifier: str, evidence: list[Path], remaining: list[str], interventions: int | None,
             rework: int | None, root: Path = ROOT) -> dict:
     path = task_path(identifier, root)
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = TaskStore(root).load(identifier)
     errors = scope_errors(value, root)
     checks = set()
     reports = []
@@ -67,12 +69,11 @@ def handoff(identifier: str, evidence: list[Path], remaining: list[str], interve
             errors.append(str(error))
     if not required_ids("all").issubset(checks):
         errors.append("Full fast verification evidence is missing")
-    value.update(status="READY" if not errors and not remaining else "BLOCKED", completed_at=utc_now(),
+    value.update(status="READY" if not errors and not remaining else "BLOCKED", handoff_at=utc_now(),
                  changed_files=changed_paths(root, value["base_sha"]), source=source_state(root),
                  evidence=reports, remaining=remaining, blockers=errors,
                  human_interventions=interventions, rework_count=rework)
-    write_json(path, value)
-    return value
+    return TaskStore(root).mutate(identifier,lambda current:{**current,**value},"handoff")
 
 
 def cleanup_check(root: Path = ROOT) -> list[str]:
@@ -85,19 +86,29 @@ def cleanup_check(root: Path = ROOT) -> list[str]:
         errors.append("HEAD contains work not integrated into dev")
     if (root / "build/locks/physical.lock").exists():
         errors.append("Physical execution lease remains; inspect its owner before cleanup")
-    for path in (root / "build/tasks").glob("*.json"):
-        if json.loads(path.read_text(encoding="utf-8")).get("status") == "ACTIVE":
-            errors.append("Active task: " + path.name)
+    store = TaskStore(root)
+    for value in store.all():
+        if Path(value["worktree"]).resolve()==root.resolve() and value.get("status")=="ACTIVE":
+            errors.append("Active task: " + value["task_id"])
+        if Path(value["worktree"]).resolve()==root.resolve():
+            errors.extend(activity_blockers(store,value["task_id"]))
     for parent in [*(root / "flow").glob("*/runs"), *(root / "smoke").glob("*/runs")]:
         if parent.is_dir() and any(parent.iterdir()):
-            errors.append("Native run artifacts require manual archival before removal: " + str(parent))
+            errors.append("Native run artifacts require verified archival before removal: " + str(parent))
     return errors
 
 
+def _parse_time(value: str):
+    return datetime.fromisoformat(value.replace("Z","+00:00"))
+
+
 def metrics(directory: Path) -> dict:
-    tasks = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(directory.glob("*.json"))]
-    finished = [task for task in tasks if task.get("completed_at")]
-    cycles = [(datetime.fromisoformat(task["completed_at"]) - datetime.fromisoformat(task["started_at"])).total_seconds()
+    if directory.name=="tasks" and directory.parent.name=="build" and (directory.parent.parent/".git").exists():
+        tasks = TaskStore(directory.parent.parent).all()
+    else:
+        tasks = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(directory.glob("*.json"))]
+    finished = [task for task in tasks if task.get("completed_at") or task.get("delivered_at") or task.get("delivery",{}).get("merged")]
+    cycles = [(_parse_time(task.get("delivered_at") or task.get("delivery",{}).get("merged_at") or task["completed_at"]) - _parse_time(task["started_at"])).total_seconds()
               for task in finished]
     interventions = [task["human_interventions"] for task in finished if isinstance(task.get("human_interventions"), int)]
     rework = [task["rework_count"] for task in finished if isinstance(task.get("rework_count"), int)]
@@ -107,12 +118,18 @@ def metrics(directory: Path) -> dict:
     executed_first = [item for item in executed_first if item]
     preparation = [entry["duration_seconds"] for values in attempts for item in values
                    for entry in item.get("preparation", []) if isinstance(entry.get("duration_seconds"), (int, float))]
-    return {"schema_version": 1, "tasks": len(tasks), "finished_tasks": len(finished),
+    return {"schema_version": 2, "tasks": len(tasks), "finished_tasks": len(finished),
             "baseline_ready": len(finished) >= 20,
+            "delivered_tasks":sum(bool(item.get("delivery",{}).get("merged")) for item in tasks),
+            "cleaned_tasks":sum(item.get("status")=="CLEANED" for item in tasks),
+            "verification_ready_tasks":sum(item.get("status")=="READY" for item in tasks),
+            "blocked_tasks":sum(item.get("status") in {"BLOCKED","NEEDS_ATTENTION","DEV_CI_FAILED"} for item in tasks),
+            "cleanup_delays_seconds":[(_parse_time(item["cleaned_at"])-_parse_time(item.get("delivered_at") or item["delivery"]["merged_at"])).total_seconds() for item in tasks if item.get("cleaned_at") and (item.get("delivered_at") or item.get("delivery",{}).get("merged_at"))],
+            "cleanup_pending_tasks":sum(bool(item.get("delivery",{}).get("merged")) and item.get("status")!="CLEANED" for item in tasks),
             "first_executed_verification_samples": len(executed_first),
             "first_executed_verification_pass_fraction": sum(item["status"] == "PASS" for item in executed_first) / len(executed_first) if executed_first else None,
             "median_linter_preparation_seconds": statistics.median(preparation) if preparation else None, "median_cycle_seconds": statistics.median(cycles) if cycles else None,
-            "ready_fraction": sum(task["status"] == "READY" for task in finished) / len(finished) if finished else None,
+            "ready_fraction": sum(task["status"] in {"READY","INTEGRATED","CLEANUP_PENDING","MERGED","DEV_GREEN","ARCHIVED","CLEANING","CLEANED"} or task.get("delivery",{}).get("merged",False) for task in finished) / len(finished) if finished else None,
             "intervention_samples": len(interventions), "human_interventions": sum(interventions) if interventions else None,
             "rework_samples": len(rework), "rework_count": sum(rework) if rework else None,
             "note": "Unknown intervention/rework counts remain unknown; no productivity gain is inferred."}
@@ -127,6 +144,12 @@ def main():
     create.add_argument("--allow", action="append", required=True)
     create.add_argument("--check", action="append", required=True)
     create.add_argument("--dependency", action="append", default=[])
+    create.add_argument("--managed-identity")
+    create.add_argument("--verify-command-json")
+    create.add_argument("--local-only",action="store_true")
+    migrate = commands.add_parser("migrate")
+    migrate.add_argument("--worktree",type=Path,required=True)
+    migrate.add_argument("--managed-identity")
     status = commands.add_parser("status")
     status.add_argument("--id", required=True)
     complete = commands.add_parser("handoff")
@@ -141,9 +164,11 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == "start":
-            value = start(args.id, args.goal, args.allow, args.check, args.dependency)
+            value = start(args.id, args.goal, args.allow, args.check, args.dependency,managed_identity=args.managed_identity,verify_command=json.loads(args.verify_command_json) if args.verify_command_json else None,delivery_mode="local-only" if args.local_only else "auto")
+        elif args.command == "migrate":
+            value = {"migrated":TaskStore(ROOT).migrate(args.worktree,args.managed_identity)}
         elif args.command == "status":
-            value = json.loads(task_path(args.id).read_text(encoding="utf-8"))
+            value = TaskStore(ROOT).load(args.id)
             value["scope_errors"] = scope_errors(value, ROOT)
         elif args.command == "handoff":
             if any(item is not None and item < 0 for item in (args.human_interventions, args.rework)):

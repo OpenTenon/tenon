@@ -77,6 +77,7 @@ endif
 help:
 	@echo "Usage: make <target> [PDK root override]"
 	@echo ""
+	@echo "  deliver / task-resume / cleanup-task TASK_ID=<registered-task>"
 	@echo "  doctor / verify / verify-pdk TENON_PDK=ihp130|sky130|gf180|ics55 / release-check"
 	@echo "  generate              Regenerate pin manifests and LibreLane configs"
 	@echo "  check-generated       Verify generated files are current"
@@ -398,3 +399,19 @@ workflow-check:
 
 adapter-compile:
 	$(PYTHON) scripts/adapter_compile.py
+.PHONY: deliver cleanup-task task-resume task-status cleanup-check
+
+deliver:
+	$(PYTHON) scripts/task_lifecycle.py deliver --id "$(TASK_ID)"
+
+cleanup-task:
+	$(PYTHON) scripts/task_lifecycle.py cleanup --id "$(TASK_ID)"
+
+task-resume:
+	$(PYTHON) scripts/task_lifecycle.py resume --id "$(TASK_ID)"
+
+task-status:
+	$(PYTHON) scripts/task_lifecycle.py status --id "$(TASK_ID)"
+
+cleanup-check:
+	$(PYTHON) scripts/task.py cleanup-check

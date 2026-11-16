@@ -129,7 +129,7 @@ def required_ids(group: str) -> set[str]:
     return {target for targets in groups.values() for target in targets} | {"repository-unchanged"}
 
 
-def verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
+def _verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
            timeout: float = 900, root: Path = ROOT) -> tuple[Path, dict]:
     summary = new_summary(root, "pdk-verification" if pdk else "verification")
     report = root / "build" / "verification" / summary["run_id"] / "summary.json"
@@ -175,6 +175,13 @@ def verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
     finish_summary(summary, root, report)
     record_attempt(root, report, summary)
     return report, summary
+
+
+def verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
+           timeout: float = 900, root: Path = ROOT) -> tuple[Path, dict]:
+    from task_store import resource_lease
+    with resource_lease(root,"verification"):
+        return _verify(group,pdk,dry_run,timeout,root)
 
 
 def affected_pdks(paths: list[str]) -> set[str]:
@@ -279,6 +286,12 @@ def main() -> int:
         print(f"{result['status']}: {path}")
         for item in result["checks"]:
             print(f"  {item['status']}: {item['id']}")
+            if item["status"] in {"FAIL","BLOCKED"}:
+                if item.get("reason"):
+                    print("    " + item["reason"])
+                if item.get("log") and (path.parent/item["log"]).is_file():
+                    tail = (path.parent/item["log"]).read_text(encoding="utf-8",errors="replace").splitlines()[-30:]
+                    print("\n".join(tail))
         return status_exit(result["status"])
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         print(f"BLOCKED: {error}", file=sys.stderr)

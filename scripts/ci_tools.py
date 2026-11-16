@@ -11,6 +11,7 @@ import tarfile
 import time
 import urllib.request
 from pathlib import Path
+from tool_cache import cache_directory, prune_caches
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,11 +29,12 @@ def unpack(archive: Path, destination: Path) -> None:
         handle.extractall(destination)
 
 
-def main():
+def _main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--group", choices=("format", "check"), required=True)
-    parser.add_argument("--cache", type=Path, default=Path.home() / ".cache/tenon-ci")
+    parser.add_argument("--cache", type=Path, default=None)
     args = parser.parse_args()
+    args.cache = args.cache or cache_directory(ROOT,args.group)
     started = time.monotonic()
     pins = json.loads((ROOT / "tools/toolchain.json").read_text(encoding="utf-8"))
     args.cache.mkdir(parents=True, exist_ok=True)
@@ -66,7 +68,16 @@ def main():
     preparation.parent.mkdir(parents=True, exist_ok=True)
     preparation.write_text(json.dumps({"group": args.group, "duration_seconds": round(time.monotonic() - started, 3),
                                       "scope": "pinned-linter-preparation; excludes system package installation"}) + "\n", encoding="utf-8")
+    prune_caches(ROOT)
     return 0
+
+
+def main():
+    from task_store import FileLease, TaskStore
+    from tool_cache import toolchain_key
+    store = TaskStore(ROOT)
+    with FileLease(store.root/"locks"/(toolchain_key(ROOT)+"-cache.lock")):
+        return _main()
 
 
 if __name__ == "__main__":

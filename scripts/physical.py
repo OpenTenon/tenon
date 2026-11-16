@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 from engineering import PDKS, doctor, pdk_info
+from task_store import resource_lease
 from engineering_common import (ROOT, PhysicalLock, digest, execute, finish_summary,
                                 new_summary, status_exit, validate_evidence, write_json)
 
@@ -100,6 +101,8 @@ class PhysicalRun:
             self.directory.mkdir(parents=True, exist_ok=False)
             self.summary["tools"] = doctor("physical", self.pdk, self.root)["tools"]
             write_json(self.path, self.summary)
+            self.resource = resource_lease(self.root,"physical")
+            self.resource.__enter__()
         except BaseException:
             self.lock.__exit__()
             raise
@@ -153,6 +156,8 @@ class PhysicalRun:
                 write_json(self.native / "tenon-run.json", {"schema_version": 1,
                     "evidence": self.path.relative_to(self.root).as_posix(), "sha256": digest(self.path)})
         finally:
+            if hasattr(self,"resource"):
+                self.resource.__exit__(None,None,None)
             self.lock.__exit__()
 
 
