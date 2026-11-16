@@ -48,6 +48,7 @@ jobs:
             ~/.cache/pip
           key: tenon-v2-check-${{ runner.os }}-${{ hashFiles('tools/toolchain.json') }}
       - run: python3 scripts/ci_tools.py --group check
+      - run: python3 scripts/ci_contract.py --root .
       - run: python3 scripts/ci_gate.py --event-only
       - run: python3 scripts/engineering.py verify --group check
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

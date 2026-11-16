@@ -97,6 +97,11 @@ def check_skills(root=ROOT):
 
 def check_policy(root=ROOT):
     errors = []
+    from ci_contract import audit_source
+    try:
+        errors.extend(audit_source(root)["errors"])
+    except RuntimeError as error:
+        errors.append(str(error))
     for name in ("tier0_profiles.json", "tier0_pdks.json"):
         data = json.loads((root / "specs" / name).read_text(encoding="utf-8"))
         if data.get("schema_version") != 1:
