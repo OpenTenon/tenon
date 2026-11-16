@@ -241,6 +241,64 @@ class ArchiveAndCleanupTests(OwnedWorktreeFixture):
         self.run_git("worktree","remove",str(self.owned))
         self.assertEqual(self.controller.finalize()["status"],"CLEANED")
 
+    def native_receipt(self):
+        self.store.mutate("owned",lambda value:{**value,"managed_identity":str(self.owned)})
+        value = {"attachmentType":"archived_worktree","identityKey":str(self.owned),
+                 "payload":{"worktree":{"root":str(self.owned),"hostId":"local","sourceGitRoot":str(self.root)}}}
+        path = self.root/"build/native-receipt.json"
+        path.write_text(json.dumps(value),encoding="utf-8")
+        return path,value
+
+    def test_confirmed_interrupted_native_archive_finishes_without_force(self):
+        receipt,_ = self.native_receipt()
+        self.assertEqual(self.controller.cleanup()["status"],"NEEDS_APP_ARCHIVE")
+        from task_lifecycle import command
+        with mock.patch("task_lifecycle.command",wraps=command) as calls:
+            result = self.controller.complete_app_cleanup(receipt)
+        self.assertEqual(result["status"],"CLEANED")
+        removals = [call.args for call in calls.call_args_list if call.args[1:3]==("worktree","remove")]
+        self.assertEqual(removals,[(self.root,"worktree","remove",str(self.owned))])
+        manifest = verify_archive(Path(result["archive"]["path"]))
+        self.assertIn("operations/app-archive-receipt.json",[item["path"] for item in manifest["files"]])
+        self.assertFalse(self.owned.exists())
+
+    def test_invalid_native_receipts_never_remove_resources(self):
+        receipt,value = self.native_receipt()
+        changes = [lambda r:r.update(attachmentType="worktree"),lambda r:r.update(identityKey=str(self.root)),
+                   lambda r:r["payload"]["worktree"].update(root=str(self.root)),
+                   lambda r:r["payload"]["worktree"].update(hostId="other"),
+                   lambda r:r["payload"]["worktree"].update(sourceGitRoot=str(self.owned)),
+                   lambda r:r["payload"]["worktree"].pop("sourceGitRoot"),
+                   lambda r:r.update(payload=None)]
+        for index,change in enumerate(changes):
+            with self.subTest(index=index):
+                changed = copy.deepcopy(value); change(changed)
+                receipt.write_text(json.dumps(changed),encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    self.controller.complete_app_cleanup(receipt)
+                self.assertTrue(self.owned.exists())
+                self.assertEqual(self.backend.deleted,0)
+
+        for malformed in ([],{},None):
+            receipt.write_text(json.dumps(malformed),encoding="utf-8")
+            with self.assertRaises(ValueError):
+                self.controller.complete_app_cleanup(receipt)
+            self.assertEqual(self.backend.deleted,0)
+
+    def test_interrupted_nonforced_removal_is_safely_resumable(self):
+        receipt,_ = self.native_receipt()
+        from task_lifecycle import command
+        def interrupted(repo,*args):
+            if args[:2]==("worktree","remove"):
+                raise OSError("directory busy")
+            return command(repo,*args)
+        with mock.patch("task_lifecycle.command",side_effect=interrupted),self.assertRaises(OSError):
+            self.controller.complete_app_cleanup(receipt)
+        self.assertTrue(self.owned.exists())
+        self.assertEqual(self.backend.deleted,1)
+        self.assertEqual(self.controller.complete_app_cleanup(receipt)["status"],"CLEANED")
+        self.assertEqual(self.backend.deleted,1)
+
     def test_remote_tip_change_refuses_deletion(self):
         self.backend.remote = "e"*40
         with self.assertRaises(ValueError):

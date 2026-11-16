@@ -96,6 +96,16 @@ uses the application's native archive API for that exact owned identity, then
 calls `finalize-cleanup` externally. The chat and PR links remain available.
 Unmanaged worktrees use normal Git worktree removal without force.
 
+If native archiving confirms an `archived_worktree` attachment but reports an
+interrupted removal, preserve its exact `list_artifacts` record as a JSON receipt
+outside the target. Use the deployed controller's `complete-app-cleanup --id TASK
+--app-archive-receipt <receipt> --repo <primary-repo>` from the primary repository.
+It binds the receipt to the registered identity, host and primary repository,
+rechecks live CI/ownership, archives the receipt and remaining evidence, then uses
+non-forced Git removal and normal finalization. A receipt is not authority to skip
+any gate. Dirty or busy directories still block; preserve originals and resume.
+Do not restore an interrupted snapshot over remaining files or modify app records.
+
 Only registered dev-* task resources qualify. Protect primary, shared, locked or
 active worktrees, dev/main/default refs, changed tips and dirty source. Exact-head
 leased ref deletion is an allowed cleanup operation; force rewriting history is
