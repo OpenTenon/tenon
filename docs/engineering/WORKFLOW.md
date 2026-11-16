@@ -1,5 +1,31 @@
 # Tenon agent engineering workflow v2
 
+## Source-bound task acceptance and analysis
+
+The stable workspace entry creates writer/integrator workspaces only. A reviewer or
+coordinator registers `scripts/task.py start --kind engineering --role reviewer`
+on an existing frozen checkout, with no write scope. Such analysis records own no
+branch or worktree, keep an exact source snapshot, and remain local-only. Their
+handoff is analysis evidence, never a merged-PR claim. Complete the analysis before
+its source owner's cleanup; the owner preserves its declared build artifacts.
+
+Engineering `--check` values are simple argv-like commands or JSON argv arrays.
+For opaque paths/arguments use a value such as
+`["python", "scripts/check_task.py", "--offline"]`; shell recipes and implicit
+Windows batch shims are rejected. The canonical `make verify` declaration is covered
+by the mandatory full source-matched verification. Every other declared argv is
+executed separately without shell evaluation, with logs and a source/contract-bound
+acceptance report. Missing or failed acceptance evidence blocks handoff/delivery.
+
+Declared outputs are checked and hashed after verification and again before push
+and merge. Exact declared build files are archived as qualified evidence, never
+treated as disposable caches; unknown ignored files remain protected. The actual
+committed diff and protected AGENTS prefix are rechecked at publishing gates.
+
+An interrupted, untouched workspace setup may fast-forward its exact owned branch
+when dev advances. Its transition is journaled before mutation; changed source,
+new commits, locks or a non-ancestor base remain blockers.
+
 ## Stable entry and Git workspaces
 
 Run `python3 scripts/tenon.py --repo <primary-repo> install` from a version that
@@ -14,6 +40,12 @@ Use the installed entry with `task start --id TASK --topic TOPIC --goal GOAL
 and a Git-managed workspace in the primary repository's sibling
 `.tenon-worktrees/<repo-id>/<task-id>`, and registers its bounded task contract.
 An explicit `--workspace-root` supports controlled build/test environments.
+New tasks default to `--kind engineering`. Its scopes cover engineering scripts,
+tests, Skills, CI and engineering guidance; each changed file is checked again so
+a broad `scripts/*` scope cannot authorize PDK installation/assets or product data.
+Explicit `--kind general` (`legacy` is an alias) preserves authorized content-task
+interfaces. An interrupted setup with no recorded kind resumes its original
+legacy contract; upgrading that intent is not inferred from the new default.
 `--verify-command-json` records an existing host verification argv; no tool or PDK
 is installed. `doctor` reports available capabilities; missing full Linux tools
 remain verification blockers. Primary edits are preserved.
@@ -93,9 +125,48 @@ branch. A later green dev containing the original delivery can resume its cleanu
 while the original failure remains recorded.
 
 Runtime Git writes use the registered host implementation. Windows owns its
-worktree lifecycle; WSL validation uses non-mutating Git queries. Default to one
-agent. Explicit parallel work has at most two writers, separate worktrees and
-independent scopes. One integrator owns shared interfaces and combined validation.
+worktree lifecycle; WSL validation uses non-mutating queries against production
+Git state. Independent disjoint engineering tasks may use conditional parallelism,
+with at most two active writers including one integrator. Each writer owns a
+separate worktree; shared interfaces stay serialized. Read-only reviewers and
+coordinators have no source write scope and do not consume a writer slot.
+
+## Task contracts and collaboration
+
+The stable entry accepts `--role writer|integrator|coordinator|reviewer`, optional
+`--read-allow`, `--input` and `--output` arguments. Source scopes are normalized
+repository-relative patterns; traversal, absolute/drive paths and Git metadata
+are rejected. Literal inputs are fingerprinted at the original dev base, and
+declared outputs/evidence are captured at handoff. Original inputs and scope are
+immutable; advancing dev updates the candidate base without inventing earlier
+observations. Reviewer handoffs are explicitly analysis-only.
+
+Dependencies must exist and be acyclic. Starting a dependent task requires its
+direct prerequisites to have integrated, recorded green-dev evidence and matching
+dev ancestry. Live PR and CI gates remain mandatory during delivery. Preflight
+runs before Git resources are created, and registration rechecks it under the same
+allocation ticket. Legacy unclassified records remain compatible rather than
+being silently adopted into the new policy.
+
+`task lease --id TASK --state active --role writer` resumes writing; `paused` and
+`completed` release actor capacity. The integrator counts as a writer. Paused or
+completed unmerged tasks still reserve their declared interfaces, so a new
+overlapping task waits until integration or an explicit task closure. Ambiguous
+glob overlap is conservative; exact file scopes permit the most parallelism.
+Merged tasks cannot reacquire writing authority.
+
+Delivery acquires the task's integrator lease before source mutation, checks
+dependencies and current dev ancestry after a normal base merge, and rechecks
+the candidate before PR merge. It pauses actor capacity on CI/network waits and
+completes the actor after confirmed integration. Capacity/interface contention is
+a typed transient condition for background retry. An unsent edit or changed
+candidate is preserved and never committed by background continuation.
+
+Native file locks use atomic open, lock before any metadata write, and release
+owned handles on all exit paths. `lease_is_held` is a non-mutating native probe:
+missing is false; held or access-denied is conservatively true. It does not prove
+PID liveness, and Windows/WSL lock namespaces are not interchangeable. Existing
+production host ownership and command-resource leases still apply.
 
 ## Verification and CI
 
