@@ -15,9 +15,11 @@ Use [the shared engineering workflow](../../../docs/engineering/WORKFLOW.md) and
 
 Use `scripts/task.py handoff` for a persistent engineering task. Verification leaves tracked sources unchanged. Formatting, regeneration and tracked report updates are separate explicit mutations.
 
-After local checks pass, follow the default dev delivery workflow unless the task
-explicitly holds delivery: commit scoped changes, verify the committed candidate,
-push/update its dev PR, wait for CI, then merge only the exact green head into dev.
-Use `scripts/ci_gate.py --delivery-snapshot <snapshot.json>` to check a fresh PR/run/jobs
-snapshot against local HEAD and refreshed origin/dev. Recheck immediately before
-merging; a changed head or base requires new validation. Main merging stays human.
+For automatic delivery, use the shared controller: inspect scope/staging, commit
+normally, run one full verification for that committed head, then push and wait
+for fresh CI. Do not rerun unchanged-input validation just to re-express a step.
+CI still checks every new candidate and merged dev. Failed diagnostics include
+a bounded log tail; full reports are retained and archived outside the worktree.
+Cleanup is complete only after dev is green, archives verify and owned resources
+are confirmed absent. Historical archived evidence never replaces current-source
+validation. Main merging remains human.

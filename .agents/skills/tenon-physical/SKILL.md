@@ -14,3 +14,9 @@ Read [physical execution and evidence](../../../docs/engineering/WORKFLOW.md#phy
 - Explicit ICS55 unsigned IO-PG runs still execute and retain the power-grid checker, skip only its documented IR-drop rerun, and remain non-signoff.
 - Inspect native final metrics, stage reports and source/configuration/PDK fingerprints. Report executed and skipped checks separately. A successful process is not manufacturing signoff.
 - Do not overwrite earlier runs, export duplicate hardening views into build, or automatically update tracked smoke reports.
+
+Physical execution leases block cleanup while commands are active. Completed native
+runs are archived with their qualifications and hashes before an owned worktree
+is removed. External PDK installations are not copied; fingerprints/revisions are
+retained. Archive failure keeps originals. An archive is historical evidence, not
+fresh verification or signoff.
