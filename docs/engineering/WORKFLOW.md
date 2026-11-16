@@ -105,6 +105,9 @@ rechecks live CI/ownership, archives the receipt and remaining evidence, then us
 non-forced Git removal and normal finalization. A receipt is not authority to skip
 any gate. Dirty or busy directories still block; preserve originals and resume.
 Do not restore an interrupted snapshot over remaining files or modify app records.
+If Git already removed its registration but left an empty directory, the same
+recovery entry rechecks the archive, receipt, live CI and local ref before ordinary
+non-recursive rmdir. A new file or an OS lock blocks it without deleting local refs.
 
 Only registered dev-* task resources qualify. Protect primary, shared, locked or
 active worktrees, dev/main/default refs, changed tips and dirty source. Exact-head

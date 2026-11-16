@@ -45,7 +45,8 @@ def ownership_errors(store: TaskStore, task: dict, absent_ok: bool = False) -> l
     if not records or root == records[0]["path"]:
         errors.append("Primary worktree is protected")
     matches = [item for item in records if item["path"]==root]
-    if root.exists():
+    empty_unregistered = absent_ok and root.is_dir() and not matches and not any(root.iterdir())
+    if root.exists() and not empty_unregistered:
         if len(matches)!=1 or matches[0].get("branch")!="refs/heads/"+branch or "locked" in matches[0]:
             errors.append("Worktree registration/branch/lock differs")
         elif matches[0].get("HEAD") != expected_head(task):
@@ -67,7 +68,7 @@ def ownership_errors(store: TaskStore, task: dict, absent_ok: bool = False) -> l
     for value in store.all():
         if value["task_id"]!=task["task_id"] and value.get("status")!="CLEANED" and Path(value["worktree"]).resolve()==root:
             errors.append("Another task owns the worktree")
-    if root.exists():
+    if root.exists() and not empty_unregistered:
         archived = archive_roots(root)
         disposables = [(root/name).resolve() for name in task.get("disposable_roots",[])]
         for item in disposables:
