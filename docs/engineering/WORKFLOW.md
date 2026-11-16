@@ -223,6 +223,29 @@ Evaluations do not opt into task delivery and never use production GitHub writes
 
 ## Versions, caches and metrics
 
+The installed entry exposes `maintenance audit [--offline]`, `maintenance
+restore-check --id TASK`, `maintenance prune-controllers [--apply]`, and
+`maintenance run [--force]`. Archive v1 validation streams payloads and rejects
+noncanonical paths, cross-platform aliases/devices/streams, duplicate entries and
+symlinks. A restore exercise uses a new private scratch directory, verifies every
+restored hash and removes only that scratch. Original archives/native outputs are
+preserved. Failed restoration is part of the durable report and proposed work items.
+
+Idle enabled workers run upkeep every 30 days; outstanding delivery/cleanup takes
+priority. Failed or unavailable upkeep retains a report and retries after one day.
+Checks cover current and historical archives, committed CI/tool pins, published
+branch rules, controller integrity and available disk capacity. Recovery exercises
+rotate across archived tasks. Work items remain local proposals for small scoped
+maintenance tasks, rather than automatically changing dependencies or policies.
+
+Controller verification compares its complete manifest/payloads to the exact Git
+source commit. Reclamation is read-only by default and affects only proven owned
+copies: preserve current/previous versions, unfinished task references, executing
+code and active worker leases, plus a 24-hour grace period. Unknown files or links
+are preserved; recognized module bytecode alone is disposable. Necessary archives
+and physical evidence have indefinite retention. Worker identity/lease binding is
+written before its first queue operation, so startup cannot hide an active version.
+
 Task state is v2; archives are manifest v1; verification v1 remains compatible.
 Skills follow repository commits. Incompatible protocol changes need migration and
 compatibility tests. Use SemVer for manual repository releases; product schemas

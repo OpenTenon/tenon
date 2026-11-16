@@ -168,6 +168,8 @@ def parser() -> argparse.ArgumentParser:
     commands = result.add_subparsers(dest="command", required=True)
     commands.add_parser("install")
     commands.add_parser("doctor")
+    maintenance = commands.add_parser("maintenance")
+    maintenance.add_argument("maintenance_args", nargs=argparse.REMAINDER)
     tasks = commands.add_parser("task").add_subparsers(dest="task_command", required=True)
     start = tasks.add_parser("start")
     start.add_argument("--id", required=True)
@@ -206,6 +208,9 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "doctor":
             value = {"status": "READY" if shutil.which("git") else "BLOCKED", "repo": str(repo),
                      "capabilities": capabilities(), "dev_sha": git(repo, "rev-parse", "origin/dev").decode().strip()}
+        elif args.command == "maintenance":
+            return subprocess.run([sys.executable, str(Path(__file__).with_name("maintenance.py")),
+                "--repo", str(repo), *args.maintenance_args], cwd=repo).returncode
         elif args.command == "reconcile":
             from task_queue import reconcile
             value = reconcile(repo, apply=args.apply)
