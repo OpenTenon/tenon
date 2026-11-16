@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from ci_gate import REQUIRED_JOBS, check_dev_delivery
 from engineering import required_ids
@@ -141,6 +142,32 @@ def ci_green(snapshot: dict | None, sha: str, event: str) -> bool:
             and run.get("conclusion")=="success" and (REQUIRED_JOBS|{"ci-required"}).issubset(set(names))
             and len(names)==len(set(names)) and all(item.get("status")=="completed" and item.get("conclusion")=="success"
                 and item.get("run_id")==run["id"] and item.get("run_attempt")==run["run_attempt"] for item in jobs))
+
+
+def directory_delete_ready(root: Path) -> bool:
+    """Probe Windows sharing permissions without changing or deleting the directory."""
+    if os.name!="nt" or not root.is_dir():
+        return True
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32",use_last_error=True)
+    kernel.CreateFileW.argtypes = [wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,wintypes.LPVOID,
+                                   wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    # DELETE access, full sharing, OPEN_EXISTING and directory semantics only.
+    # No DELETE_ON_CLOSE, disposition change or privilege adjustment is used.
+    handle = kernel.CreateFileW(str(root),0x10000,7,None,3,0x02000000,None)
+    if handle==ctypes.c_void_p(-1).value:
+        error = ctypes.get_last_error()
+        if error in {2,3}:
+            return True
+        if error==32:
+            return False
+        raise ctypes.WinError(error)
+    kernel.CloseHandle(handle)
+    return True
 
 
 class Lifecycle:
@@ -406,6 +433,43 @@ class Lifecycle:
         command(primary,"worktree","remove",str(root))
         return self.finalize()
 
+    def wait_app_cleanup(self, receipt: Path, wait_seconds: float, poll_seconds: float = 30) -> dict:
+        """One bounded external execution, retrying only OS directory sharing leases."""
+        if not 0<=wait_seconds<=86400 or not 0<poll_seconds<=300:
+            raise ValueError("Use a bounded wait up to 86400 seconds and a positive poll up to 300")
+        task = self.task()
+        root = Path(task["worktree"]).resolve()
+        if Path.cwd().resolve().is_relative_to(root) or Path(__file__).resolve().is_relative_to(root):
+            raise ValueError("Resource waiting needs an external executor")
+        self.native_archive_record(receipt)
+        worker = {"pid":os.getpid(),"host_platform":os.name,"started_at":utc_now(),
+                  "limit_seconds":wait_seconds,"state":"RUNNING"}
+        self.update("cleanup-worker-started",cleanup_worker=worker)
+        deadline,waiting = time.monotonic()+wait_seconds,False
+        try:
+            while True:
+                if directory_delete_ready(root):
+                    waiting = False
+                    try:
+                        result = self.complete_app_cleanup(receipt)
+                        self.update("cleanup-worker-finished",cleanup_worker={**worker,"state":"DONE","finished_at":utc_now()})
+                        return result
+                    except OSError as error:
+                        if getattr(error,"winerror",None)!=32:
+                            raise
+                if not waiting:
+                    self.update("cleanup-waiting-for-resource",status="WAITING_RESOURCE",
+                                cleanup_worker={**worker,"state":"WAITING_RESOURCE"})
+                    waiting = True
+                remaining = deadline-time.monotonic()
+                if remaining<=0:
+                    raise TimeoutError("Directory lease remains held; originals and refs are retained")
+                time.sleep(min(poll_seconds,remaining))
+        except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:
+            self.update("cleanup-worker-stopped",status="WAITING_RESOURCE" if isinstance(error,TimeoutError) else "BLOCKED",
+                        cleanup_worker={**worker,"state":"STOPPED","finished_at":utc_now(),"reason":str(error)})
+            raise
+
     def finalize(self) -> dict:
         task = self.task()
         if task.get("status")=="CLEANED":
@@ -418,7 +482,8 @@ class Lifecycle:
             raise ValueError("Remote deletion checkpoint is missing")
         registered = any(item["path"]==root for item in worktrees(self.store.repo))
         empty_remnant = root.is_dir() and not any(root.iterdir()) and not registered
-        if registered or (root.exists() and not empty_remnant):
+        missing_registration = registered and not root.exists()
+        if (registered and not missing_registration) or (root.exists() and not empty_remnant):
             raise ValueError("Worktree removal is not confirmed")
         verify_task_archive(self.store,task)
         self.backend.refresh()
@@ -431,20 +496,25 @@ class Lifecycle:
             raise ValueError("Live merged PR/CI and green dev ancestry are required before finalization")
         if self.backend.remote_head(task["branch"]):
             raise ValueError("Remote branch still exists")
-        if any(item.get("branch")=="refs/heads/"+task["branch"] for item in worktrees(self.store.repo)):
+        if any(item.get("branch")=="refs/heads/"+task["branch"] and item["path"]!=root for item in worktrees(self.store.repo)):
             raise ValueError("Task branch is checked out elsewhere")
         ref = "refs/heads/"+task["branch"]
         result = subprocess.run(["git","-C",str(self.store.repo),"rev-parse","--verify",ref],stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False)
         if result.returncode==0:
             if result.stdout.decode().strip()!=expected_head(task):
                 raise ValueError("Local branch advanced; conditional deletion refused")
+        if (missing_registration or empty_remnant) and task.get("managed_identity"):
+            if not task.get("app_archive_receipt"):
+                raise ValueError("Managed remnants require their native archive receipt")
+            self.native_archive_record(Path(task["app_archive_receipt"]))
+        if missing_registration:
+            # Reconcile only this owned entry; never prune other worktrees or force.
+            command(self.store.repo,"worktree","remove",str(root))
         if empty_remnant:
-            if task.get("managed_identity"):
-                if not task.get("app_archive_receipt"):
-                    raise ValueError("Empty managed remnant requires its native archive receipt")
-                self.native_archive_record(Path(task["app_archive_receipt"]))
             # rmdir is non-recursive and atomically refuses new files or busy directories.
             root.rmdir()
+        if root.exists() or any(item["path"]==root for item in worktrees(self.store.repo)):
+            raise ValueError("Worktree directory/registration is still present")
         if result.returncode==0:
             command(self.store.repo,"update-ref","-d",ref,expected_head(task))
         tracking = "refs/remotes/origin/"+task["branch"]
@@ -464,18 +534,25 @@ class Lifecycle:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action",choices=("deliver","resume","cleanup","finalize-cleanup","complete-app-cleanup","status"))
+    parser.add_argument("action",choices=("deliver","resume","cleanup","finalize-cleanup","complete-app-cleanup","wait-app-cleanup","status"))
     parser.add_argument("--repo",type=Path,default=ROOT)
     parser.add_argument("--id",required=True)
     parser.add_argument("--app-archive-receipt",type=Path)
+    parser.add_argument("--wait-seconds",type=float,default=7200)
+    parser.add_argument("--poll-seconds",type=float,default=30)
     args = parser.parse_args()
     try:
+        if args.action=="status":
+            print(json.dumps(TaskStore(args.repo).load(args.id),indent=2,ensure_ascii=False))
+            return 0
         lifecycle = Lifecycle(args.repo,args.id)
         with FileLease(lifecycle.store.root/"locks"/(args.id+"-controller.lock")):
-            if args.action=="status":
-                result = lifecycle.task()
-            elif args.action in {"deliver","resume"}:
+            if args.action in {"deliver","resume"}:
                 result = lifecycle.deliver()
+            elif args.action=="wait-app-cleanup":
+                if args.app_archive_receipt is None:
+                    raise ValueError("A native archived attachment receipt is required")
+                result = lifecycle.wait_app_cleanup(args.app_archive_receipt,args.wait_seconds,args.poll_seconds)
             elif args.action=="complete-app-cleanup":
                 if args.app_archive_receipt is None:
                     raise ValueError("A native archived attachment receipt is required")

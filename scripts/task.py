@@ -123,7 +123,7 @@ def metrics(directory: Path) -> dict:
             "delivered_tasks":sum(bool(item.get("delivery",{}).get("merged")) for item in tasks),
             "cleaned_tasks":sum(item.get("status")=="CLEANED" for item in tasks),
             "verification_ready_tasks":sum(item.get("status")=="READY" for item in tasks),
-            "blocked_tasks":sum(item.get("status") in {"BLOCKED","NEEDS_ATTENTION","DEV_CI_FAILED"} for item in tasks),
+            "blocked_tasks":sum(item.get("status") in {"BLOCKED","NEEDS_ATTENTION","DEV_CI_FAILED","WAITING_RESOURCE"} for item in tasks),
             "cleanup_delays_seconds":[(_parse_time(item["cleaned_at"])-_parse_time(item.get("delivered_at") or item["delivery"]["merged_at"])).total_seconds() for item in tasks if item.get("cleaned_at") and (item.get("delivered_at") or item.get("delivery",{}).get("merged_at"))],
             "cleanup_pending_tasks":sum(bool(item.get("delivery",{}).get("merged")) and item.get("status")!="CLEANED" for item in tasks),
             "first_executed_verification_samples": len(executed_first),
