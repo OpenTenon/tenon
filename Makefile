@@ -1,13 +1,17 @@
-PYTHON           ?= python3
-IVERILOG         ?= iverilog
-VVP              ?= vvp
-MBAKE            ?= mbake
-VERIBLE_FORMAT   ?= verible-verilog-format
-LIBRELANE        ?= librelane
-PDK              ?= ihp-sg13g2
-IHP_CIEL_ROOT    ?= $(HOME)/.ciel/ciel/ihp-sg13g2/versions/3b5a704ba6738aa686b08706187830e6284d2a10
-OPENROAD         ?= openroad
-PDK_ROOT         ?= $(IHP_CIEL_ROOT)
+PYTHON                 ?= python3
+IVERILOG               ?= iverilog
+VVP                    ?= vvp
+MBAKE                  ?= mbake
+VERIBLE_FORMAT         ?= verible-verilog-format
+LIBRELANE              ?= librelane
+PDK                    ?= ihp-sg13g2
+IHP_CIEL_ROOT          ?= $(HOME)/.ciel/ciel/ihp-sg13g2/versions/3b5a704ba6738aa686b08706187830e6284d2a10
+OPENROAD               ?= openroad
+PDK_ROOT               ?= $(IHP_CIEL_ROOT)
+TENON_PDK              ?= ihp130
+TENON_PHYSICAL_TIMEOUT ?= 21600
+TENON_DRC_APPROVAL     ?=
+export SKIP_DRC SKIP_MAGIC_SPICE SKIP_NETGEN_LVS UNSIGNED_IO_PG TENON_DRC_APPROVAL
 SKIP_DRC         ?= 0
 SKIP_MAGIC_SPICE ?= 0
 SKIP_NETGEN_LVS  ?= 0
@@ -73,6 +77,7 @@ endif
 help:
 	@echo "Usage: make <target> [PDK root override]"
 	@echo ""
+	@echo "  doctor / verify / verify-pdk TENON_PDK=ihp130|sky130|gf180|ics55 / release-check"
 	@echo "  generate              Regenerate pin manifests and LibreLane configs"
 	@echo "  check-generated       Verify generated files are current"
 	@echo "  check                 Run PDK-independent repository checks"
@@ -109,8 +114,8 @@ help:
 	@echo "  harden-ics55-qfn32-no-pll / harden-ics55-qfn32-pll"
 	@echo "  harden-ics55-qfn{32,64,88,128}-no-pll-unsigned-io-pg  Explicit non-signoff SP55 IO-PG continuation"
 	@echo "  SKIP_DRC=1            Skip Magic and KLayout DRC only (off by default)"
-	@echo "  SKIP_MAGIC_SPICE=1    Skip ICS55 Magic Spice extraction only (non-signoff; off by default)"
-	@echo "  SKIP_NETGEN_LVS=1     Skip ICS55 Netgen LVS only (non-signoff; off by default)"
+	@echo "  SKIP_MAGIC_SPICE=1    Blocked: extraction skipping is outside the AGENTS.md exceptions"
+	@echo "  SKIP_NETGEN_LVS=1     Blocked: LVS skipping is outside the AGENTS.md exceptions"
 	@echo "  UNSIGNED_IO_PG=1      Required by explicit ICS55 no-PLL IO-PG continuation targets"
 
 generate:
@@ -246,6 +251,10 @@ lint-gf180: check-pdk-gf180
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_gf180_qfn128 $(GF180_IO_MODEL) $(GF180_RTL)
 
 test: check-pdk-ihp
+	@mkdir -p $(BUILD_DIR)/tests
+	$(IVERILOG) -g2012 -s tenon_tier0_tb -o $(BUILD_DIR)/tests/tenon_tier0_tb.vvp $(IHP_IO_MODEL) $(IHP_RTL) tb/tenon_tier0_tb.sv
+	$(VVP) $(BUILD_DIR)/tests/tenon_tier0_tb.vvp
+
 lint-ics55: lint-ics55-no-pll lint-ics55-pll
 
 lint-ics55-no-pll: check-pdk-ics55
@@ -260,21 +269,17 @@ lint-ics55-pll: check-pdk-ics55
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn88_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_qfn128_pll flow/ics55/ics55_io_blackbox.v $(ICS55_RTL)
 
-	@mkdir -p $(BUILD_DIR)/tests
-	$(IVERILOG) -g2012 -s tenon_tier0_tb -o $(BUILD_DIR)/tests/tenon_tier0_tb.vvp $(IHP_IO_MODEL) $(IHP_RTL) tb/tenon_tier0_tb.sv
-	$(VVP) $(BUILD_DIR)/tests/tenon_tier0_tb.vvp
+harden-qfn32: check-generated lint test
+	$(PYTHON) scripts/physical.py --pdk ihp130 --config $(IHP_FLOW_DIR)/qfn32.yaml --tag tenon-qfn32 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn32 $(IHP_FLOW_DIR)/qfn32.yaml
 
-harden-qfn32: generate check-pdk-ihp
-	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn32 --overwrite $(IHP_FLOW_DIR)/qfn32.yaml
+harden-qfn64: check-generated lint test
+	$(PYTHON) scripts/physical.py --pdk ihp130 --config $(IHP_FLOW_DIR)/qfn64.yaml --tag tenon-qfn64 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn64 $(IHP_FLOW_DIR)/qfn64.yaml
 
-harden-qfn64: generate check-pdk-ihp
-	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn64 --overwrite $(IHP_FLOW_DIR)/qfn64.yaml
+harden-qfn88: check-generated lint test
+	$(PYTHON) scripts/physical.py --pdk ihp130 --config $(IHP_FLOW_DIR)/qfn88.yaml --tag tenon-qfn88 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn88 $(IHP_FLOW_DIR)/qfn88.yaml
 
-harden-qfn88: generate check-pdk-ihp
-	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn88 --overwrite $(IHP_FLOW_DIR)/qfn88.yaml
-
-harden-qfn128: generate check-pdk-ihp
-	$(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn128 --overwrite $(IHP_FLOW_DIR)/qfn128.yaml
+harden-qfn128: check-generated lint test
+	$(PYTHON) scripts/physical.py --pdk ihp130 --config $(IHP_FLOW_DIR)/qfn128.yaml --tag tenon-qfn128 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(PDK) --pdk-root $(PDK_ROOT) $(IHP_DRC_OVERRIDES) --run-tag tenon-qfn128 $(IHP_FLOW_DIR)/qfn128.yaml
 
 harden-all:
 	$(MAKE) harden-qfn32 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
@@ -282,17 +287,17 @@ harden-all:
 	$(MAKE) harden-qfn88 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-qfn128 PDK_ROOT="$(PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 
-harden-sky130-qfn32: generate check-pdk-sky130
-	$(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn32 --overwrite $(SKY130_FLOW_DIR)/qfn32.yaml
+harden-sky130-qfn32: check-generated lint-sky130
+	$(PYTHON) scripts/physical.py --pdk sky130 --config $(SKY130_FLOW_DIR)/qfn32.yaml --tag tenon-qfn32 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn32 $(SKY130_FLOW_DIR)/qfn32.yaml
 
-harden-sky130-qfn64: generate check-pdk-sky130
-	$(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn64 --overwrite $(SKY130_FLOW_DIR)/qfn64.yaml
+harden-sky130-qfn64: check-generated lint-sky130
+	$(PYTHON) scripts/physical.py --pdk sky130 --config $(SKY130_FLOW_DIR)/qfn64.yaml --tag tenon-qfn64 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn64 $(SKY130_FLOW_DIR)/qfn64.yaml
 
-harden-sky130-qfn88: generate check-pdk-sky130
-	$(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn88 --overwrite $(SKY130_FLOW_DIR)/qfn88.yaml
+harden-sky130-qfn88: check-generated lint-sky130
+	$(PYTHON) scripts/physical.py --pdk sky130 --config $(SKY130_FLOW_DIR)/qfn88.yaml --tag tenon-qfn88 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn88 $(SKY130_FLOW_DIR)/qfn88.yaml
 
-harden-sky130-qfn128: generate check-pdk-sky130
-	$(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn128 --overwrite $(SKY130_FLOW_DIR)/qfn128.yaml
+harden-sky130-qfn128: check-generated lint-sky130
+	$(PYTHON) scripts/physical.py --pdk sky130 --config $(SKY130_FLOW_DIR)/qfn128.yaml --tag tenon-qfn128 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(SKY130_PDK) --pdk-root $(SKY130_PDK_ROOT) --scl $(SKY130_SCL) $(SKY130_DRC_SKIPS) --override-config DRT_OPT_ITERS=$(SKY130_DRT_OPT_ITERS) --run-tag tenon-qfn128 $(SKY130_FLOW_DIR)/qfn128.yaml
 
 harden-sky130-all:
 	$(MAKE) harden-sky130-qfn32 SKY130_PDK_ROOT="$(SKY130_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)" SKY130_DRT_OPT_ITERS="$(SKY130_DRT_OPT_ITERS)"
@@ -300,17 +305,17 @@ harden-sky130-all:
 	$(MAKE) harden-sky130-qfn88 SKY130_PDK_ROOT="$(SKY130_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)" SKY130_DRT_OPT_ITERS="$(SKY130_DRT_OPT_ITERS)"
 	$(MAKE) harden-sky130-qfn128 SKY130_PDK_ROOT="$(SKY130_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)" SKY130_DRT_OPT_ITERS="$(SKY130_DRT_OPT_ITERS)"
 
-harden-gf180-qfn32: generate check-pdk-gf180
-	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn32 --overwrite $(GF180_FLOW_DIR)/qfn32.yaml
+harden-gf180-qfn32: check-generated lint-gf180
+	$(PYTHON) scripts/physical.py --pdk gf180 --config $(GF180_FLOW_DIR)/qfn32.yaml --tag tenon-qfn32 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn32 $(GF180_FLOW_DIR)/qfn32.yaml
 
-harden-gf180-qfn64: generate check-pdk-gf180
-	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn64 --overwrite $(GF180_FLOW_DIR)/qfn64.yaml
+harden-gf180-qfn64: check-generated lint-gf180
+	$(PYTHON) scripts/physical.py --pdk gf180 --config $(GF180_FLOW_DIR)/qfn64.yaml --tag tenon-qfn64 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn64 $(GF180_FLOW_DIR)/qfn64.yaml
 
-harden-gf180-qfn88: generate check-pdk-gf180
-	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn88 --overwrite $(GF180_FLOW_DIR)/qfn88.yaml
+harden-gf180-qfn88: check-generated lint-gf180
+	$(PYTHON) scripts/physical.py --pdk gf180 --config $(GF180_FLOW_DIR)/qfn88.yaml --tag tenon-qfn88 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn88 $(GF180_FLOW_DIR)/qfn88.yaml
 
-harden-gf180-qfn128: generate check-pdk-gf180
-	$(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn128 --overwrite $(GF180_FLOW_DIR)/qfn128.yaml
+harden-gf180-qfn128: check-generated lint-gf180
+	$(PYTHON) scripts/physical.py --pdk gf180 --config $(GF180_FLOW_DIR)/qfn128.yaml --tag tenon-qfn128 --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(GF180_PDK) --pdk-root $(GF180_PDK_ROOT) --scl $(GF180_SCL) --pad $(GF180_PAD) $(GF180_DRC_SKIPS) --run-tag tenon-qfn128 $(GF180_FLOW_DIR)/qfn128.yaml
 
 harden-gf180-all:
 	$(MAKE) harden-gf180-qfn32 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
@@ -319,8 +324,8 @@ harden-gf180-all:
 	$(MAKE) harden-gf180-qfn128 GF180_PDK_ROOT="$(GF180_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 
 define ICS55_HARDEN_RULE
-harden-ics55-qfn$(1)-$(2): generate check-pdk-ics55
-	DRT_THREADS=$(ICS55_DRT_THREADS) $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(ICS55_LEGACY_PAD) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --run-tag tenon-qfn$(1)-$(2) --overwrite $(ICS55_FLOW_DIR)/qfn$(1)-$(2).yaml
+harden-ics55-qfn$(1)-$(2): check-generated lint-ics55
+	DRT_THREADS=$(ICS55_DRT_THREADS) $(PYTHON) scripts/physical.py --pdk ics55 --config $(ICS55_FLOW_DIR)/qfn$(1)-$(2).yaml --tag tenon-qfn$(1)-$(2) --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(ICS55_LEGACY_PAD) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --run-tag tenon-qfn$(1)-$(2) $(ICS55_FLOW_DIR)/qfn$(1)-$(2).yaml
 endef
 
 $(eval $(call ICS55_HARDEN_RULE,32,no-pll))
@@ -335,10 +340,10 @@ $(eval $(call ICS55_HARDEN_RULE,128,pll))
 # targets retain Checker.PowerGridViolations but make its result non-fatal only
 # after an operator explicitly acknowledges that the output is not signoff.
 define ICS55_UNSIGNED_IO_PG_RULE
-harden-ics55-qfn$(1)-no-pll-unsigned-io-pg: generate check-pdk-ics55
+harden-ics55-qfn$(1)-no-pll-unsigned-io-pg: check-generated lint-ics55
 	@test "$(UNSIGNED_IO_PG)" = "1" || { echo "Set UNSIGNED_IO_PG=1 to run this non-signoff target."; exit 2; }
 	@echo "WARNING: retaining non-fatal PSM violations; result is not signed off."
-	DRT_THREADS=$(ICS55_DRT_THREADS) $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(ICS55_LEGACY_PAD) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --override-config ERROR_ON_PDN_VIOLATIONS=false --skip OpenROAD.IRDropReport --run-tag tenon-qfn$(1)-no-pll-unsigned-io-pg --overwrite $(ICS55_FLOW_DIR)/qfn$(1)-no-pll.yaml
+	DRT_THREADS=$(ICS55_DRT_THREADS) $(PYTHON) scripts/physical.py --pdk ics55 --config $(ICS55_FLOW_DIR)/qfn$(1)-no-pll.yaml --tag tenon-qfn$(1)-no-pll-unsigned-io-pg --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) --pad $(ICS55_LEGACY_PAD) $(ICS55_DRC_SKIPS) $(ICS55_MAGIC_SPICE_SKIP) $(ICS55_NETGEN_LVS_SKIP) --override-config DRT_OPT_ITERS=$(ICS55_DRT_OPT_ITERS) --override-config ERROR_ON_PDN_VIOLATIONS=false --skip OpenROAD.IRDropReport --run-tag tenon-qfn$(1)-no-pll-unsigned-io-pg $(ICS55_FLOW_DIR)/qfn$(1)-no-pll.yaml
 endef
 
 $(eval $(call ICS55_UNSIGNED_IO_PG_RULE,32))
@@ -363,3 +368,33 @@ harden-ics55-pll-all:
 	$(MAKE) harden-ics55-qfn64-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-ics55-qfn88-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
 	$(MAKE) harden-ics55-qfn128-pll ICS55_PDK_ROOT="$(ICS55_PDK_ROOT)" SKIP_DRC="$(SKIP_DRC)"
+
+.PHONY: doctor verify verify-pdk release-check tools-test policy-check skill-check workflow-check adapter-compile
+
+doctor:
+	$(PYTHON) scripts/engineering.py doctor
+
+verify:
+	$(PYTHON) scripts/engineering.py verify
+
+verify-pdk:
+	$(PYTHON) scripts/engineering.py verify-pdk --pdk $(TENON_PDK)
+
+release-check:
+	$(PYTHON) scripts/engineering.py release-check $(TENON_RELEASE_ARGS)
+
+tools-test:
+	$(PYTHON) -m unittest discover -s tests/engineering -v
+
+policy-check:
+	$(PYTHON) scripts/repo_policy.py
+
+skill-check:
+	$(PYTHON) scripts/repo_policy.py --skills-only
+
+workflow-check:
+	yamllint .github .yamllint.yml
+	actionlint
+
+adapter-compile:
+	$(PYTHON) scripts/adapter_compile.py

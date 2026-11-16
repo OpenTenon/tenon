@@ -11,15 +11,14 @@ from pathlib import Path
 
 from design_manifest import load_designs
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from physical import PhysicalRun
+
 ROOT = Path(__file__).resolve().parent
 RUN_TAG = "ics55-smoke"
 ABSTRACT_LEF = ROOT / "openroad_abstract_lef.py"
-SKIPPED_STEPS = (
-    "Magic.DRC",
-    "KLayout.DRC",
-    "Magic.SpiceExtraction",
-    "Netgen.LVS",
-)
+# No automatic DRC/extraction/LVS exceptions: AGENTS.md is authoritative.
+SKIPPED_STEPS: tuple[str, ...] = ()
 
 
 def base_command(pdk_root: str) -> list[str]:
@@ -45,7 +44,6 @@ def fresh_command(pdk_root: str) -> list[str]:
         "KLayout.Render",
         "--run-tag",
         RUN_TAG,
-        "--overwrite",
         "config.json",
     ]
 
@@ -70,7 +68,7 @@ def render_state(design_dir: Path) -> Path:
     return states[-1]
 
 
-def generate_abstract_lef(design_dir: Path, top: str) -> Path:
+def generate_abstract_lef(design_dir: Path, top: str, session: PhysicalRun) -> Path:
     run_dir = design_dir / "runs" / RUN_TAG
     odb = run_dir / "final" / "odb" / f"{top}.odb"
     lef = run_dir / "openroad-abstract-lef" / f"{top}.lef"
@@ -85,7 +83,8 @@ def generate_abstract_lef(design_dir: Path, top: str) -> Path:
         top,
     ]
     print("+", " ".join(command))
-    subprocess.run(command, check=True, cwd=design_dir)
+    if not session.command(command, cwd=design_dir, check_id="abstract-lef"):
+        raise RuntimeError("Abstract LEF generation failed; see execution evidence")
     return lef
 
 
@@ -97,7 +96,9 @@ def main() -> int:
     )
     parser.add_argument("--design", action="append")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--timeout", type=float, default=21600)
     args = parser.parse_args()
+    os.environ["ICS55_PDK_ROOT"] = args.pdk_root
 
     designs = load_designs(args.design)
     failures: list[str] = []
@@ -108,25 +109,24 @@ def main() -> int:
         print("+", " ".join(command), f"(cwd={design_dir})")
         if args.dry_run:
             continue
-        result = subprocess.run(command, cwd=design_dir)
-        if result.returncode != 0:
-            failures.append(design["name"])
-            continue
         try:
-            lef = generate_abstract_lef(design_dir, design["top"])
-            state = render_state(design_dir)
-        except (FileNotFoundError, subprocess.CalledProcessError) as error:
+            with PhysicalRun(ROOT.parent, "ics55", design_dir / "config.json", RUN_TAG, args.timeout) as session:
+                if not session.command(command, cwd=design_dir, check_id="initial-flow"):
+                    failures.append(design["name"])
+                    continue
+                lef = generate_abstract_lef(design_dir, design["top"], session)
+                state = render_state(design_dir)
+                command = resume_command(args.pdk_root, state, lef)
+                if not session.command(command, cwd=design_dir, check_id="resume-flow"):
+                    failures.append(design["name"])
+            if session.summary["status"] != "PASS":
+                failures.append(design["name"])
+        except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as error:
             print(error, file=sys.stderr)
-            failures.append(design["name"])
-            continue
-        command = resume_command(args.pdk_root, state, lef)
-        print("+", " ".join(command), f"(cwd={design_dir})")
-        result = subprocess.run(command, cwd=design_dir)
-        if result.returncode != 0:
             failures.append(design["name"])
 
     if not args.dry_run:
-        report_command = [sys.executable, str(ROOT / "report_metrics.py"), "--write"]
+        report_command = [sys.executable, str(ROOT / "report_metrics.py"), "--output", str(ROOT.parent / "build" / "smoke" / "REPORTS.md")]
         for design in args.design or []:
             report_command.extend(("--design", design))
         report = subprocess.run(report_command)
@@ -136,7 +136,7 @@ def main() -> int:
     if failures:
         print("FAILED:", ", ".join(failures), file=sys.stderr)
         return 1
-    print("PASS: all selected ICS55 smoke flows completed.")
+    print("NOT_RUN: commands planned; no checks executed." if args.dry_run else "PASS: all selected ICS55 smoke flows completed (non-signoff).")
     return 0
 
 

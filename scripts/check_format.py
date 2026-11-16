@@ -78,24 +78,25 @@ def check_makefiles(tool: str, config: Path, paths: list[Path], root: Path) -> l
         return [
             source
             for source, copy in zip(paths, copies, strict=True)
-            if (root / source).read_bytes() != copy.read_bytes()
+            if (root / source).read_bytes().replace(b"\r\n", b"\n") != copy.read_bytes().replace(b"\r\n", b"\n")
         ]
 
 
 def format_rtl(tool: str, config: Path, paths: list[Path], root: Path, verify: bool) -> None:
-    batches: Iterable[list[Path]] = ([path] for path in paths) if verify else chunks(paths)
-    for batch in batches:
-        action = "--verify" if verify else "--inplace"
-        run(
-            [
-                tool,
-                f"--flagfile={config}",
-                "--failsafe_success=false",
-                action,
-                *(str(path) for path in batch),
-            ],
-            root,
-        )
+    # Check canonical text in temporary files, preserving Windows checkouts byte-for-byte.
+    with tempfile.TemporaryDirectory(prefix="tenon-rtl-format-") as temporary:
+        temporary_root = Path(temporary)
+        normalized_config = temporary_root / "verible.flags"
+        normalized_config.write_bytes(config.read_bytes().replace(b"\r\n", b"\n"))
+        if verify:
+            for source in paths:
+                copy = temporary_root / source
+                copy.parent.mkdir(parents=True, exist_ok=True)
+                copy.write_bytes((root / source).read_bytes().replace(b"\r\n", b"\n"))
+                run([tool, f"--flagfile={normalized_config}", "--failsafe_success=false", "--verify", str(copy)], root)
+        else:
+            for batch in chunks(paths):
+                run([tool, f"--flagfile={normalized_config}", "--failsafe_success=false", "--inplace", *(str(path) for path in batch)], root)
 
 
 def main() -> int:

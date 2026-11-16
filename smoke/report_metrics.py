@@ -5,9 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from design_manifest import load_designs
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from physical import read_run_evidence
 
 ROOT = Path(__file__).resolve().parent
 RUN_TAG = "ics55-smoke"
@@ -61,6 +65,12 @@ def report_row(design: dict[str, object]) -> tuple[str, bool]:
     grid = layout_grid(design)
     run_root = ROOT / name / "runs" / RUN_TAG
     metrics_path = run_root / "final" / "metrics.json"
+    try:
+        read_run_evidence(run_root, ROOT.parent)
+    except FileNotFoundError:
+        return f"| {name} | NOT RUN | " + " | ".join(["-"] * 16) + " |", False
+    except (ValueError, KeyError, OSError):
+        return f"| {name} | FAIL | " + " | ".join(["-"] * 16) + " |", False
     post_route = stage_metrics(run_root, "*-openroad-detailedrouting/state_out.json")
     disconnected_metrics = stage_metrics(run_root, "*-checker-disconnectedpins/state_out.json")
     if units is None or grid is None or not metrics_path.exists() or post_route is None or disconnected_metrics is None:
@@ -120,8 +130,8 @@ def render(selected: set[str] | None = None) -> tuple[str, bool]:
     content = [
         "# ICS55 Smoke Reports",
         "",
-        "All results are non-signoff evaluations. Magic DRC, KLayout DRC, Magic",
-        "Spice extraction, and Netgen LVS are skipped. Route DRC, OpenROAD",
+        "All results are local non-signoff evaluations with source-matched evidence.",
+        "Per-run evidence records executed checks and any explicit exceptions. OpenROAD",
         "antenna, PSM, and critical disconnected-pin results are read from the",
         "corresponding completed flow stages. Every die uses an integer number of",
         "25 um x 40 um layout units; actual utilization is sampled after detailed",
@@ -140,12 +150,20 @@ def render(selected: set[str] | None = None) -> tuple[str, bool]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--write", action="store_true")
+    outputs = parser.add_mutually_exclusive_group()
+    outputs.add_argument("--write", action="store_true")
+    outputs.add_argument("--output", type=Path)
     parser.add_argument("--design", action="append")
     args = parser.parse_args()
     content, passed = render(set(args.design) if args.design else None)
     if args.write:
         (ROOT / "REPORTS.md").write_text(content)
+    elif args.output:
+        output = args.output.resolve()
+        if not output.is_relative_to((ROOT.parent / "build").resolve()):
+            parser.error("--output must stay inside the ignored build directory; use --write for the tracked report")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(content, encoding="utf-8")
     else:
         print(content, end="")
     return 0 if passed else 1
