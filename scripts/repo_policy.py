@@ -13,24 +13,85 @@ SKILLS = {"tenon-task", "tenon-verify", "tenon-generated", "tenon-physical", "te
 
 
 def check_skills(root=ROOT):
+    import ast
+    import shlex
+    from skill_eval import load_cases
     errors = []
     found = set()
+    make = (root / "Makefile").read_text(encoding="utf-8")
+    targets = set(re.findall(r"^([A-Za-z][\w-]*)\s*:", make, re.M))
+    contracts = {}
+
+    def command_error(command):
+        try:
+            argv = shlex.split(command)
+        except ValueError:
+            return "invalid command quoting"
+        if len(argv) >= 2 and argv[0] == "make":
+            return None if argv[1] in targets else "unknown Make target " + argv[1]
+        if len(argv) >= 2 and argv[0] in {"python", "python3"} and argv[1].endswith(".py"):
+            source = (root / argv[1]).resolve()
+            if not source.is_relative_to(root.resolve()) or not source.is_file():
+                return "missing/outside Python entry " + argv[1]
+            if source not in contracts:
+                tree = ast.parse(source.read_text(encoding="utf-8"))
+                names = set()
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                        if node.func.attr in {"add_parser", "add_argument"}:
+                            names.update(arg.value for arg in node.args if isinstance(arg, ast.Constant) and isinstance(arg.value, str))
+                            for option in node.keywords:
+                                if option.arg == "choices" and isinstance(option.value, (ast.List, ast.Tuple, ast.Set)):
+                                    names.update(item.value for item in option.value.elts if isinstance(item, ast.Constant) and isinstance(item.value, str))
+                    if (isinstance(node, ast.For) and isinstance(node.target, ast.Name)
+                            and isinstance(node.iter, (ast.List, ast.Tuple, ast.Set))
+                            and all(isinstance(item, ast.Constant) and isinstance(item.value, str) for item in node.iter.elts)):
+                        for call in (child for statement in node.body for child in ast.walk(statement)):
+                            if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                                    and call.func.attr in {"add_parser", "add_argument"} and call.args
+                                    and isinstance(call.args[0], ast.Name) and call.args[0].id == node.target.id):
+                                names.update(item.value for item in node.iter.elts)
+                contracts[source] = names
+            if len(argv) >= 3 and argv[2] not in contracts[source]:
+                return "unknown Python command/option " + argv[2]
+        return None
+
     for path in sorted((root / ".agents/skills").glob("*/SKILL.md")):
         text = path.read_text(encoding="utf-8")
         match = re.match(r"\A---\n(.*?)\n---\n", text, re.S)
         if not match:
             errors.append(f"{path}: missing skill frontmatter")
             continue
-        metadata = dict(re.findall(r"^(name|description):\s*(.+)$", match[1], re.M))
+        fields = re.findall(r"^(name|description):\s*(.+)$", match[1], re.M)
+        metadata = dict(fields)
         name = metadata.get("name", "")
-        if name != path.parent.name or name in found or not metadata.get("description"):
+        if name != path.parent.name or name in found or not metadata.get("description") or len(fields) != 2:
             errors.append(f"{path}: invalid or duplicate name/description")
         found.add(name)
-        for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", text):
-            if "://" not in target and not (path.parent / target.split("#")[0]).is_file():
-                errors.append(f"{path}: missing reference {target}")
+        for document in [path, *sorted((path.parent / "references").rglob("*.md"))]:
+            body = document.read_text(encoding="utf-8")
+            for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", body):
+                if "://" in target:
+                    continue
+                link, _, anchor = target.partition("#")
+                destination = (document.parent / link).resolve()
+                if not destination.is_relative_to(root.resolve()) or not destination.is_file():
+                    errors.append(f"{document}: missing/outside reference {target}")
+                elif anchor:
+                    headings = re.findall(r"^#{1,6}\s+(.+)$", destination.read_text(encoding="utf-8"), re.M)
+                    slugs = {re.sub(r"[^\w\s-]", "", heading.lower()).replace(" ", "-") for heading in headings}
+                    if anchor not in slugs:
+                        errors.append(f"{document}: missing reference anchor {target}")
+            for command in re.findall(r"`([^`\n]+)`", body):
+                error = command_error(command)
+                if error:
+                    errors.append(f"{document}: {error}")
     if found != SKILLS:
         errors.append(f"Expected Skills {sorted(SKILLS)}, found {sorted(found)}")
+    try:
+        load_cases(root)
+    except (ValueError, KeyError, OSError) as error:
+        errors.append("Invalid Skill evaluation cases: " + str(error))
     return errors
 
 
