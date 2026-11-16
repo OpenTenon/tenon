@@ -305,8 +305,12 @@ def main(argv: list[str] | None = None) -> int:
             root = Path(value["worktree"])
             if value.get("kind") == "engineering" and value.get("role") in {"writer", "integrator"}:
                 from task_lifecycle import Lifecycle
+                from types import SimpleNamespace
                 with FileLease(TaskStore(repo).root / "locks" / (args.id + "-controller.lock")):
-                    controller = Lifecycle(repo, args.id)
+                    # Local qualification needs the shared task/evidence context,
+                    # never a GitHub origin, account, transport or delivery backend.
+                    context = SimpleNamespace(name=value.get("repository") or "local-verification")
+                    controller = Lifecycle(repo, args.id, backend=context)
                     head = git(root, "rev-parse", "HEAD").decode().strip()
                     controller.verification(value, root, head)
                     controller.acceptance(controller.task(), root, head)
