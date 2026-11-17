@@ -34,6 +34,51 @@ def literal(text: str, name: str):
         raise ValueError("Controller declaration must remain literal: " + name) from error
 
 
+def windows_artifact(index: int) -> str:
+    return "verification-windows-shard-" + str(index) + "-attempt-" + "$" + "{{ github.run_attempt }}"
+
+
+def check_shard_steps(jobs: dict) -> list[str]:
+    """The hard needs gate precedes ordinary downloads, then a hard report gate."""
+    errors = []
+    for index, name in enumerate(("tools-windows", "tools-windows-extra")):
+        steps = jobs.get(name, {}).get("steps", [])
+        uploads = [step for step in steps if str(step.get("uses", "")).startswith("actions/upload-artifact@")]
+        if (len(uploads) != 1 or uploads[0].get("if") != "always()" or uploads[0].get("continue-on-error")
+                or uploads[0].get("with", {}).get("name") != windows_artifact(index)
+                or str(uploads[0].get("with", {}).get("path", "")).rstrip("/") != "build/verification"):
+            errors.append("Windows shard upload is missing, softened or lacks its attempt-qualified name: " + name)
+    gate = jobs.get("required", {})
+    steps = gate.get("steps", [])
+    first = [i for i, step in enumerate(steps) if step.get("run") in ("python3 scripts/ci_gate.py", "python scripts/ci_gate.py")]
+    last = [i for i, step in enumerate(steps) if step.get("run") in (
+        "python3 scripts/ci_gate.py --windows-shards build/ci-windows",
+        "python scripts/ci_gate.py --windows-shards build/ci-windows")]
+    downloads = []
+    for index in (0, 1):
+        matches = [i for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/download-artifact@")
+                   and step.get("with", {}).get("name") == windows_artifact(index)
+                   and step.get("with", {}).get("path") == "build/ci-windows/" + str(index)
+                   and set(step.get("with", {})) == {"name", "path"}]
+        downloads.append(matches)
+    all_downloads = [step for step in steps if str(step.get("uses", "")).startswith("actions/download-artifact@")]
+    if len(first) != 1 or len(last) != 1 or any(len(items) != 1 for items in downloads) or len(all_downloads) != 2:
+        errors.append("ci-required must hard-gate needs, download exactly both current-attempt shards and check their union")
+        return errors
+    order = [first[0], downloads[0][0], downloads[1][0], last[0]]
+    if order != sorted(set(order)):
+        errors.append("ci-required shard gate/download order differs")
+    for index in order:
+        step = steps[index]
+        if "if" in step or step.get("continue-on-error"):
+            errors.append("A required shard gate/download step was softened")
+    for index in (first[0], last[0]):
+        environment = {**gate.get("env", {}), **steps[index].get("env", {})}
+        if environment.get("CI_NEEDS") != "$" + "{{ toJSON(needs) }}":
+            errors.append("A hard needs gate has no current needs context")
+    return errors
+
+
 def check_data(workflow: dict, templates: dict, pins: dict, required_jobs=None, verification_groups=None) -> list[str]:
     errors = []
     if not isinstance(workflow, dict):
@@ -67,6 +112,10 @@ def check_data(workflow: dict, templates: dict, pins: dict, required_jobs=None, 
             value = events[event] or {}
             if set(value.get("branches", [])) != {"dev", "main"} or any(key.startswith("paths") for key in value):
                 errors.append("Fast CI must cover all dev/main changes without path filtering")
+    sharded = "tools-windows-extra" in required_jobs
+    windows = {"tools-windows", "tools-windows-extra"} if sharded else {"tools-windows"}
+    if sharded:
+        errors.extend(check_shard_steps(jobs))
     dispatched = set()
     for name, job in jobs.items():
         if "permissions" in job and job["permissions"] not in ({"contents": "read"}, {}):
@@ -76,8 +125,10 @@ def check_data(workflow: dict, templates: dict, pins: dict, required_jobs=None, 
         limit = job.get("timeout-minutes")
         if not isinstance(limit, int) or not 0 < limit <= 30:
             errors.append("Missing or unbounded job timeout: " + name)
-        if name != "tools-windows" and job.get("runs-on") != pins.get("linux_runner"):
+        if name not in windows and job.get("runs-on") != pins.get("linux_runner"):
             errors.append("Linux runner differs from the toolchain contract: " + name)
+        if name in windows and job.get("runs-on") != "windows-2022":
+            errors.append("Native Windows runner differs: " + name)
         for step in job.get("steps", []):
             action = step.get("uses")
             if action and not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{40}", action):
@@ -90,8 +141,15 @@ def check_data(workflow: dict, templates: dict, pins: dict, required_jobs=None, 
             if not any(command in {"python3 scripts/ci_gate.py", "python scripts/ci_gate.py"} for command in unconditional):
                 errors.append("ci-required does not dispatch its fail-closed gate")
         else:
-            groups = [match[1] for command in unconditional
-                      if (match := re.fullmatch(r"python(?:3)? scripts/engineering\.py verify --group ([a-z_-]+)", command))]
+            if sharded and name in windows:
+                index = 0 if name == "tools-windows" else 1
+                pattern = r"python(?:3)? scripts/engineering\.py verify --group tools --shard-index " + str(index) + r" --shard-count 2"
+                groups = ["tools" for command in unconditional if re.fullmatch(pattern, command)]
+                if len(groups) != 1:
+                    errors.append("Windows job must execute its explicit tools shard: " + name)
+            else:
+                groups = [match[1] for command in unconditional
+                          if (match := re.fullmatch(r"python(?:3)? scripts/engineering\.py verify --group ([a-z_-]+)", command))]
             if not groups or any(group not in verification_groups for group in groups):
                 errors.append("Required job does not dispatch a known verifier group: " + name)
             dispatched.update(groups)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+import hashlib
+import json
 import os
 import platform
 from pathlib import Path
@@ -53,9 +55,10 @@ class TimingResult(unittest.TextTestResult):
         super().startTest(test)
         row = self.rows.get(test.id())
         if row is None:
-            self.report["errors"].append("Execution introduced an undiscovered case: " + test.id())
+            self.report["errors"].append("Execution introduced a case outside its selected inventory: " + test.id())
             row = case_record(test)
-            row["discovered"] = False
+            row["discovered"] = test.id() in self.report.get("discovery", {}).get("case_ids", [])
+            row["selected"] = False
             self.report["cases"].append(row)
             self.rows[test.id()] = row
         row.update(status="RUNNING", started_at=utc_now())
@@ -148,6 +151,98 @@ class TimingResult(unittest.TextTestResult):
                        duration_seconds=max(0.0, self.clock() - self.starts.pop(identity)))
 
 
+def shard_options(index, count) -> bool:
+    if index is None and count is None:
+        return False
+    if type(index) is not int or type(count) is not int or count != 2 or index not in range(count):
+        raise ValueError("Both --shard-index 0|1 and --shard-count 2 are required")
+    return True
+
+
+def discover_inventory(root: Path = ROOT, *, loader=None) -> dict:
+    """Independently discover this checkout; never run its suite or test bodies."""
+    root = root.resolve()
+    before = source_state(root)
+    try:
+        loader = loader or unittest.TestLoader()
+        suite = loader.discover(str(root / "tests/engineering"), pattern="test*.py")
+        if loader.errors:
+            raise ValueError("Import errors: " + "\n".join(loader.errors))
+        records = [case_record(test) for test in flatten(suite)]
+        identities = [row["id"] for row in records]
+        if not identities or len(identities) != len(set(identities)):
+            raise ValueError("Independent discovery is empty or has duplicate case identities")
+        inventory = [{key: row[key] for key in ("id", "module", "class")} for row in records]
+    except (Exception, KeyboardInterrupt, SystemExit) as error:
+        raise ValueError("Independent unittest discovery failed: " + type(error).__name__ + ": " + str(error)) from error
+    finally:
+        after = source_state(root)
+        if before != after:
+            raise ValueError("Source changed during independent unittest discovery")
+    return {"source": before, "source_after": after, "source_unchanged": True, "cases": inventory}
+
+
+def load_allocation(root: Path) -> tuple[dict, str]:
+    content = (root / "tests/engineering/windows-shards.json").read_bytes()
+    value = json.loads(content)
+    if (type(value.get("schema_version")) is not int or value.get("schema_version") != 1 or value.get("kind") != "windows-unittest-shards"
+            or type(value.get("shard_count")) is not int or value["shard_count"] != 2
+            or value.get("unknown_module_assignment") != "sha256-utf8-big-endian-modulo"):
+        raise ValueError("Unsupported Windows module allocation")
+    modules = value.get("module_assignments")
+    if not isinstance(modules, dict) or not modules:
+        raise ValueError("The measured module allocation is empty")
+    if any(not isinstance(name, str) or not name or type(index) is not int or index not in (0, 1)
+           for name, index in modules.items()):
+        raise ValueError("Invalid module allocation entry")
+    return value, hashlib.sha256(content).hexdigest()
+
+
+def module_owner(module: str, allocation: dict) -> tuple[int, str]:
+    if module in allocation["module_assignments"]:
+        return allocation["module_assignments"][module], "manifest"
+    return int.from_bytes(hashlib.sha256(module.encode("utf-8")).digest(), "big") % 2, "stable-hash"
+
+
+def module_assignments(records: list[dict], allocation: dict) -> list[dict]:
+    return [{"module": name, "index": module_owner(name, allocation)[0],
+             "source": module_owner(name, allocation)[1]} for name in sorted({row["module"] for row in records})]
+
+
+def select_suite(suite, identities: set[str]):
+    # Flattening custom suite wrappers could discard their execution semantics.
+    # Full runs retain them; sharding refuses unsupported wrappers explicitly.
+    if type(suite) is not unittest.TestSuite:
+        raise ValueError("Module sharding supports standard unittest.TestSuite only")
+    children = []
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            children.append(select_suite(item, identities))
+        elif item.id() in identities:
+            children.append(item)
+    return unittest.TestSuite(children)
+
+
+def github_context(root: Path) -> dict | None:
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return None
+    workspace = os.environ.get("GITHUB_WORKSPACE")
+    if not workspace:
+        raise ValueError("GitHub workspace identity is missing")
+    if Path(workspace).resolve() != root:
+        # Nested disposable repositories are test fixtures, not the CI checkout.
+        return None
+    values = {name: os.environ.get(name, "") for name in
+              ("GITHUB_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_REPOSITORY", "GITHUB_JOB")}
+    if (not re.fullmatch(r"[0-9a-f]{40}", values["GITHUB_SHA"])
+            or any(not re.fullmatch(r"[1-9][0-9]*", values[name]) for name in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"))
+            or not values["GITHUB_REPOSITORY"] or not values["GITHUB_JOB"]):
+        raise ValueError("GitHub run/attempt/checkout identity is incomplete")
+    return {"checkout_sha": values["GITHUB_SHA"], "run_id": int(values["GITHUB_RUN_ID"]),
+            "run_attempt": int(values["GITHUB_RUN_ATTEMPT"]), "repository": values["GITHUB_REPOSITORY"],
+            "job": values["GITHUB_JOB"]}
+
+
 def report_destination(root: Path, path: Path) -> Path:
     """Validate before any mkdir/write, including resolved parent directory links."""
     path = path if path.is_absolute() else root / path
@@ -162,12 +257,15 @@ def report_destination(root: Path, path: Path) -> Path:
     return destination
 
 
-def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None, stream=None) -> tuple[Path, dict]:
-    """Default full discovery. This API deliberately provides no shard/filter option."""
+def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None, stream=None,
+              shard_index: int | None = None, shard_count: int | None = None) -> tuple[Path, dict]:
+    """Default full execution; explicit partial runs own complete modules only."""
+    partial = shard_options(shard_index, shard_count)
     root = root.resolve()
     identifier = run_id()
     report_path = report_destination(root, report_path or root / "build/verification" / ("unittest-" + identifier) / "summary.json")
-    report = {"schema_version": 1, "kind": "engineering-unittest", "run_id": identifier,
+    report = {"schema_version": 1, "kind": "engineering-unittest-shard" if partial else "engineering-unittest",
+              "partial": partial, "ci": None, "run_id": identifier,
               "started_at": utc_now(), "completed_at": None, "duration_seconds": None,
               "source": None, "source_after": None, "source_unchanged": None,
               "python": {"version": sys.version, "implementation": platform.python_implementation(), "executable": sys.executable},
@@ -178,7 +276,7 @@ def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None
               "qualification": "Complete local unittest observation; skips and expected failures remain explicit; no physical signoff"}
     def checkpoint():
         counts = Counter(row["status"] for row in report["cases"])
-        report["counts"] = {"discovered": len(report["discovery"]["case_ids"]),
+        report["counts"] = {"discovered": len(report["discovery"]["case_ids"]), "selected": len(report.get("shard", {}).get("selected_ids", report["discovery"]["case_ids"])),
                             "started": sum(row["started_at"] is not None for row in report["cases"]),
                             "outcomes": {state: counts[state] for state in OUTCOMES}}
         write_json(report_path, report)
@@ -186,6 +284,9 @@ def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None
     result = None
     try:
         report["source"] = source_state(root)
+        report["ci"] = github_context(root)
+        if report["ci"] and report["ci"]["checkout_sha"] != report["source"]["sha"]:
+            raise ValueError("The checkout differs from GITHUB_SHA")
         checkpoint()
         loader = loader or unittest.TestLoader()
         suite = loader.discover(str(root / "tests/engineering"), pattern="test*.py")
@@ -193,12 +294,23 @@ def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None
         identities = [row["id"] for row in report["cases"]]
         report["discovery"].update(case_ids=identities, errors=list(loader.errors), complete=not loader.errors,
             duplicate_ids=sorted(identity for identity, count in Counter(identities).items() if count > 1))
+        report["discovery"]["cases"] = [{key: row[key] for key in ("id", "module", "class")} for row in report["cases"]]
+        if partial:
+            allocation, allocation_sha = load_allocation(root)
+            assignments = module_assignments(report["cases"], allocation)
+            selected = [row for row in report["cases"] if module_owner(row["module"], allocation)[0] == shard_index]
+            report["shard"] = {"index": shard_index, "count": shard_count, "manifest_sha256": allocation_sha,
+                               "assignments": assignments, "selected_ids": [row["id"] for row in selected]}
+            report["cases"] = selected
+            suite = select_suite(suite, set(report["shard"]["selected_ids"]))
+            if not selected:
+                report["errors"].append("The requested shard selected zero cases")
         if not identities:
             report["errors"].append("Discovery found zero test cases")
         if report["discovery"]["duplicate_ids"]:
             report["errors"].append("Discovery returned duplicate test identities")
         checkpoint()
-        if identities and not report["discovery"]["duplicate_ids"]:
+        if identities and report["cases"] and not report["discovery"]["duplicate_ids"]:
             def result_factory(output, descriptions, verbosity):
                 nonlocal result
                 result = TimingResult(output, descriptions, verbosity, report=report, checkpoint=checkpoint)
@@ -239,9 +351,12 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--report", type=Path, help="Path inside root/build/verification; tracked files and escaping links are refused")
+    parser.add_argument("--shard-index", type=int, choices=(0, 1))
+    parser.add_argument("--shard-count", type=int, choices=(2,))
     args = parser.parse_args(argv)
     try:
-        path, report = run_tests(args.root, report_path=args.report)
+        path, report = run_tests(args.root, report_path=args.report,
+                                shard_index=args.shard_index, shard_count=args.shard_count)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print("FAIL: " + str(error), file=sys.stderr)
         return 1

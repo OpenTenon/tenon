@@ -17,7 +17,7 @@ class DevDeliveryTests(unittest.TestCase):
                     "path": ".github/workflows/ci.yml", "status": "completed", "conclusion": "success"}
         self.jobs = [{"name": name, "run_id": 42, "run_attempt": 1,
                       "status": "completed", "conclusion": "success"}
-                     for name in ("format", "check", "sim", "tools-windows", "ci-required")]
+                     for name in sorted(ci_gate.REQUIRED_JOBS | {"ci-required"})]
 
     def assess(self, contains=True):
         return ci_gate.check_dev_delivery(self.pull, self.run, self.jobs, self.head,

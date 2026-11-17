@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "kind": "windows-unittest-shards",
+  "shard_count": 2,
+  "module_assignments": {
+    "test_background": 0,
+    "test_ci_contract": 1,
+    "test_delivery": 1,
+    "test_engineering": 1,
+    "test_engineering_tests": 0,
+    "test_entrypoint": 1,
+    "test_failures": 1,
+    "test_file_leases": 1,
+    "test_lifecycle_v2": 1,
+    "test_maintenance": 1,
+    "test_metrics": 0,
+    "test_skill_governance": 1,
+    "test_task_contracts": 0
+  },
+  "unknown_module_assignment": "sha256-utf8-big-endian-modulo",
+  "profile": {
+    "run_id": 44058738635,
+    "run_attempt": 1,
+    "candidate_sha": "1e67600f0c7249a4dc08211ce9d231a9c5bf4211",
+    "checkout_sha": "de78b1513d8547a0c6306ab60b480531d733a49e",
+    "artifact_id": 14317631833,
+    "case_report_sha256": "6ec0897289b0d5f53597370ff8b8d043feddaa48e1557e62bf4939a6ce3278c5"
+  },
+  "qualification": "Whole modules balanced from successful Windows case timings; shared fixture/provisioning/report overhead is not a speedup claim"
+}

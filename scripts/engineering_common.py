@@ -166,6 +166,8 @@ def validate_evidence(path: Path, root: Path, required: set[str] | None = None) 
     value = json.loads(path.read_text(encoding="utf-8"))
     if value.get("schema_version") != SCHEMA_VERSION or value.get("status") != "PASS":
         raise ValueError("Evidence schema/status is not acceptable")
+    if value.get("partial") or value.get("kind") in {"verification-partial", "engineering-unittest-shard"} or "shard" in value:
+        raise ValueError("Partial/sharded observations cannot qualify as full verification evidence")
     if not value.get("completed_at") or not value.get("run_id"):
         raise ValueError("Evidence is incomplete")
     actual = source_state(root)
@@ -230,7 +232,7 @@ def record_attempt(root: Path, report: Path, summary: dict) -> None:
         return
     attempt = {"run_id":summary["run_id"],"report_relative":report.relative_to(root).as_posix(),
                "report":str(report),"sha256":digest(report),"source":summary["source"],
-               "status":summary["status"],"group":summary.get("group"),
+               "status":summary["status"],"group":summary.get("group"),"kind":summary.get("kind"),"partial":summary.get("partial",False),
                "started_at":summary["started_at"],"completed_at":summary["completed_at"],
                "preparation":summary.get("preparation",[])}
     if task.get("host_platform")!=os.name:
