@@ -66,7 +66,7 @@ class Second(unittest.TestCase):
         self.assertTrue(report["python"]["version"])
         self.assertTrue(report["platform"]["description"])
         self.assertEqual(json.loads(path.read_text(encoding="utf-8")), report)
-        self.assertTrue(path.is_relative_to(self.root / "build/verification"))
+        self.assertTrue(path.is_relative_to(self.root.resolve() / "build/verification"))
 
     def test_fail_error_expected_failure_unexpected_success_and_subtests(self):
         self.module("""class Cases(unittest.TestCase):
