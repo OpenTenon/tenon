@@ -211,6 +211,33 @@ The measurements cover lightweight linters, not PDK or system-package preparatio
 Windows supports pure Python diagnostics/tool tests; full checks use an existing
 Linux environment. Python >=3.10 is supported; Windows CI uses 3.13.
 
+`make tools-test` and the native `engineering.py verify --group tools` check use
+`scripts/engineering_tests.py`. The default always discovers and executes the
+complete `tests/engineering/test*.py` inventory. Local full verification remains
+unpartitioned; only explicit native tools-group flags select Windows CI modules.
+Each report retains the discovery IDs, per-case module/class, actual outcome,
+elapsed time, skip reason and subtest observations. Expected failures and
+unexpected successes remain separate; unexpected successes, fixture errors,
+import/discovery failures, empty or duplicated inventories and source mutation
+produce nonzero exits. Shared setup skips retain their reasons without claiming
+that a case body ran. Interrupted reports retain unexecuted cases explicitly.
+
+Runner reports default to `build/verification/unittest-<run>/summary.json`; native
+verification places `tools-test.json` beside its summary and binds its SHA256.
+Explicit report paths must stay inside that root's `build/verification/`; tracked
+files and escaping directory links are rejected before any write.
+The complete source fingerprint is collected only at the round boundaries.
+Reports include Python/platform identity and module timing sums. Case timers
+cover case setup/body/teardown/cleanup and exclude report serialization/writes;
+module sums exclude shared module/class fixtures, discovery and report IO. These
+are observed test durations, not independent coverage or CI runner-time claims.
+
+All Actions use official stable Node 24 releases pinned to full commit SHAs.
+The workflow comments identify the reviewed release tags. Runtime verification
+uses each pinned commit's `action.yml`, rather than treating a major tag or a
+Node-compatibility environment override as proof. Existing hosted runner labels,
+permissions and immutable tool-preparation pins are retained.
+
 Full verification retains generated/manifest checks, existing smoke behavior,
 adapter behavior, 20 fixed-top compilations, formatting, tooling/policy/workflow
 checks and the read-only source invariant. Compilation is not new behavioral or
@@ -224,9 +251,42 @@ their meanings; missing tools and dry runs cannot pass. Failed checks print a
 bounded diagnostic tail; complete logs are preserved. Historical archives do not
 substitute for a current-source result or physical signoff.
 
-CI keeps three Linux groups, Windows tooling and ci-required. No path filtering
-weakens full fast coverage. PR CI and merged dev CI both run. All jobs must succeed;
+CI keeps three Linux groups, two explicit Windows tooling jobs and ci-required.
+No path filtering weakens full fast coverage. PR CI and merged dev CI both run. All jobs must succeed;
 pending, absent, skipped, cancelled or failed jobs never qualify for integration.
+Windows jobs `tools-windows` and `tools-windows-extra` run `--group tools
+--shard-index 0|1 --shard-count 2`. `tests/engineering/windows-shards.json` versions
+the module assignments derived from successful run 44058738635. Each unknown
+module uses the full SHA256 of its UTF-8 module name, interpreted as a big-endian
+integer modulo two, and reports `stable-hash` ownership. A new test module needs
+no manifest edit and is included in exactly one partition.
+
+Both reports keep identical complete discovery IDs and module/class metadata,
+then explicitly list their selected cases and assignment source. Case execution
+retains the original module/class fixtures; unsupported custom suite wrappers
+fail rather than losing their execution semantics. Partial case reports use
+`engineering-unittest-shard` and outer summaries use `verification-partial`.
+They are rejected by full-evidence validation and cannot qualify a handoff.
+Default `make verify`, its full inventory and physical requirements are unchanged.
+
+Each Windows artifact name includes its shard and `github.run_attempt`. The
+always-run required job first hard-checks all five prerequisite jobs, downloads
+both current-attempt artifacts from this same run, then checks their reports.
+Downloads and both gates remain ordinary required steps without soft failure.
+No token permissions are added. The aggregate checks the actual checkout
+`GITHUB_SHA` (a PR test-merge SHA, not merely the candidate head), run ID/attempt,
+repository/job, clean source fingerprints, native Windows/Python identity,
+manifest hash, equal discovery, exact ownership, nonoverlapping complete union,
+outcomes and explicit skips. The aggregate independently discovers the current
+checkout's complete id/module/class inventory without running test bodies and
+checks source fingerprints before/after discovery. Import failures, empty or
+duplicate inventories, source mutation and platform-dependent discovery fail
+closed. Each Windows report must exactly match this independently obtained list;
+two reports agreeing on the same omission cannot qualify. The two native Windows sharing/cleanup cases must
+both be executed PASS; missing reports, stale attempts, unselected execution,
+hidden subtest errors and incomplete discovery fail the gate. This aggregate is
+CI evidence and does not turn partial reports into full local validation.
+
 Published branch protections require PRs, ci-required, current bases and resolved
 discussions, forbid dev/main force pushes/deletion and restrict main to its human
 maintainer. GitHub cannot distinguish a person from automation holding that user's

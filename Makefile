@@ -391,7 +391,7 @@ release-check:
 	$(PYTHON) scripts/engineering.py release-check $(TENON_RELEASE_ARGS)
 
 tools-test:
-	$(PYTHON) -m unittest discover -s tests/engineering -v
+	$(PYTHON) scripts/engineering_tests.py
 
 policy-check:
 	$(PYTHON) scripts/repo_policy.py

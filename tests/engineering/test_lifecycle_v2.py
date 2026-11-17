@@ -15,6 +15,7 @@ from task_store import TaskStore, resource_lease
 from task_archive import archive_task, ownership_errors, verify_archive
 from task_lifecycle import Lifecycle, GitHub, ci_green, directory_delete_ready
 import task
+from ci_gate import REQUIRED_JOBS
 import skill_eval
 
 
@@ -22,7 +23,7 @@ def green(sha, event="push"):
     return {"workflow_run":{"id":42,"run_attempt":1,"head_sha":sha,"event":event,
                              "status":"completed","conclusion":"success"},
             "jobs":[{"name":name,"run_id":42,"run_attempt":1,"status":"completed","conclusion":"success"}
-                    for name in ("format","check","sim","tools-windows","ci-required")]}
+                    for name in sorted(REQUIRED_JOBS | {"ci-required"})]}
 
 
 class FakeGitHub:

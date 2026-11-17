@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-from test_engineering import ROOT, RepositoryFixture
+from test_engineering import ROOT, RepositoryFixture, ci_gate
 import test_engineering as fixtures
 import ci_tools
 import engineering
@@ -262,7 +262,7 @@ class CacheAndSkillTests(unittest.TestCase):
             self.skipTest("Workflow parser is provided by the Linux workflow-check toolchain")
         workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
         jobs = workflow["jobs"]
-        self.assertEqual(set(jobs["required"]["needs"]), {"format","check","sim","tools-windows"})
+        self.assertEqual(set(jobs["required"]["needs"]), ci_gate.REQUIRED_JOBS)
         self.assertEqual(jobs["required"]["if"], "always()")
         self.assertEqual(jobs["required"]["name"], "ci-required")
         events = workflow.get("on", workflow.get(True))
