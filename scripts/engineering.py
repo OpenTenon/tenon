@@ -150,7 +150,7 @@ def _verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
         targets = list(dict.fromkeys(target for items in groups.values() for target in items))
     for index, target in enumerate(targets):
         native_commands = {
-            "tools-test": [sys.executable, "-m", "unittest", "discover", "-s", "tests/engineering", "-v"],
+            "tools-test": [sys.executable, "scripts/engineering_tests.py", "--report", str(report.parent / "tools-test.json")],
             "skill-check": [sys.executable, "scripts/repo_policy.py", "--skills-only"],
         }
         command = native_commands.get(target, make_command(target))
@@ -166,6 +166,13 @@ def _verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
             summary["checks"].append(execute(command, root,
                 report.parent / f"{index:02d}-{target}.log", timeout, dry_run, target,
                 coverage={"kind": ("manual-interface-and-view-check" if pdk == "ics55" else "production-io-model-check") if pdk else target}))
+        if target == "tools-test" and not dry_run:
+            cases_report = report.parent / "tools-test.json"
+            check = summary["checks"][-1]
+            if cases_report.is_file():
+                check["test_report"] = {"path": cases_report.name, "sha256": digest(cases_report)}
+            elif check.get("status") == "PASS":
+                check.update(status="FAIL", reason="The unittest process returned no case report")
         write_json(report, summary)
     if pdk:
         summary["checks"].append({"id": "pdk-inputs-unchanged", "required": True,

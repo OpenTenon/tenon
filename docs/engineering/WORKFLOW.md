@@ -211,6 +211,32 @@ The measurements cover lightweight linters, not PDK or system-package preparatio
 Windows supports pure Python diagnostics/tool tests; full checks use an existing
 Linux environment. Python >=3.10 is supported; Windows CI uses 3.13.
 
+`make tools-test` and the native `engineering.py verify --group tools` check use
+`scripts/engineering_tests.py`. The default always discovers and executes the
+complete `tests/engineering/test*.py` inventory; no sharding or case filter is
+active. Each report retains the discovery IDs, per-case module/class, actual
+outcome, elapsed time, skip reason and subtest observations. Expected failures
+and unexpected successes remain separate; unexpected successes, fixture errors,
+import/discovery failures, empty or duplicated inventories and source mutation
+produce nonzero exits. Shared setup skips retain their reasons without claiming
+that a case body ran. Interrupted reports retain unexecuted cases explicitly.
+
+Runner reports default to `build/verification/unittest-<run>/summary.json`; native
+verification places `tools-test.json` beside its summary and binds its SHA256.
+Explicit report paths must stay inside that root's `build/verification/`; tracked
+files and escaping directory links are rejected before any write.
+The complete source fingerprint is collected only at the round boundaries.
+Reports include Python/platform identity and module timing sums. Case timers
+cover case setup/body/teardown/cleanup and exclude report serialization/writes;
+module sums exclude shared module/class fixtures, discovery and report IO. These
+are observed test durations, not independent coverage or CI runner-time claims.
+
+All four Actions use official stable Node 24 releases pinned to full commit SHAs.
+The workflow comments identify the reviewed release tags. Runtime verification
+uses each pinned commit's `action.yml`, rather than treating a major tag or a
+Node-compatibility environment override as proof. Existing hosted runner labels,
+five CI jobs, permissions, gates and immutable tool-preparation pins are retained.
+
 Full verification retains generated/manifest checks, existing smoke behavior,
 adapter behavior, 20 fixed-top compilations, formatting, tooling/policy/workflow
 checks and the read-only source invariant. Compilation is not new behavioral or
