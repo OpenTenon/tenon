@@ -288,6 +288,7 @@ def main():
     prune.add_argument("--apply", action="store_true")
     due = commands.add_parser("run")
     due.add_argument("--force", action="store_true")
+    commands.add_parser("drill", help="Run independent processes against owned temporary Git fixtures")
     args = parser.parse_args()
     try:
         if args.command == "audit":
@@ -296,6 +297,9 @@ def main():
             value = restore_check(args.repo.resolve(), args.id)
         elif args.command == "prune-controllers":
             value = prune_controllers(args.repo.resolve(), args.apply)
+        elif args.command == "drill":
+            from engineering_drills import run_drills
+            value = run_drills(args.repo.resolve())
         else:
             value = run_due(args.repo.resolve(), args.force)
     except (OSError, ValueError, KeyError, RuntimeError) as error:
