@@ -1,6 +1,45 @@
 #!/usr/bin/env python3
 """Resumable dev delivery and archive-first, expected-head resource cleanup."""
 from __future__ import annotations
+
+# Controller execution ABI 1: keep before all local/business imports.
+import os as _tenon_os
+import sys as _tenon_sys
+from pathlib import Path as _tenon_Path
+
+def _tenon_cache_entry():
+    entry = _tenon_Path(__file__).absolute()
+    version = entry.parent.parent
+    if (entry.parent.name != "scripts" or version.parent.name != "controllers"
+            or version.parent.parent.name != "tenon" or len(version.name) != 40
+            or any(char not in "0123456789abcdef" for char in version.name)):
+        return
+    module = _tenon_sys.modules.get("controller_leases")
+    if module is not None and module.active_for(entry):
+        return
+    if __name__ != "__main__":
+        raise RuntimeError("Owned controller imports require an admitted execution; use the installed entry")
+    _tenon_sys.dont_write_bytecode = True
+    _tenon_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+    launcher = version.parent.parent / "bin/tenon.py"
+    if not launcher.is_file():
+        raise RuntimeError("Controller admission is unavailable; run the qualified source installer explicitly")
+    import json as _tenon_boot_json
+    configuration = _tenon_boot_json.loads((launcher.parent / "installation.json").read_bytes())
+    if configuration.get("controller_lease_abi") != 1:
+        raise RuntimeError("Installed launcher has no execution admission ABI; run the qualified new source installer explicitly after dev is green")
+    import runpy as _tenon_runpy
+    _tenon_sys.argv = [str(launcher), "_controller", str(entry), *_tenon_sys.argv[1:]]
+    _tenon_runpy.run_path(str(launcher), run_name="__main__")
+    raise SystemExit(0)
+
+try:
+    _tenon_cache_entry()
+except (OSError, ValueError, RuntimeError) as _tenon_error:
+    import json as _tenon_json
+    print(_tenon_json.dumps({"status": "BLOCKED", "reason": str(_tenon_error)}))
+    raise SystemExit(2)
+
 import argparse
 import json
 import os
@@ -11,8 +50,10 @@ import time
 from pathlib import Path
 from ci_gate import REQUIRED_JOBS, check_dev_delivery
 from engineering import required_ids
+from engineering_common import safe_exception, safe_error_payload
 from engineering_common import ROOT, digest, execute, git, utc_now, validate_evidence, write_json
 from task_archive import archive_task, deploy_controller, expected_head, ownership_errors, verify_archive, verify_task_archive, worktrees
+from controller_leases import integration_scope
 from task_store import FileLease, TaskStore
 from task_backends import GitHub, command, repository_name, directory_delete_ready, WorkspaceBackend
 
@@ -44,7 +85,7 @@ class Lifecycle:
             self.update("repository-observed",repository=self.backend.name)
 
     def update(self, action: str, **fields):
-        return self.store.mutate(self.task_id,lambda value:{**value,**fields},action)
+        return self.store.mutate(self.task_id,lambda value:{**value,**safe_error_payload(fields)},action)
 
     def task(self):
         return self.store.load(self.task_id)
@@ -422,7 +463,7 @@ class Lifecycle:
                 time.sleep(min(poll_seconds,remaining))
         except (OSError,ValueError,RuntimeError,subprocess.SubprocessError) as error:
             self.update("cleanup-worker-stopped",status="WAITING_RESOURCE" if isinstance(error,TimeoutError) else "BLOCKED",
-                        cleanup_worker={**worker,"state":"STOPPED","finished_at":utc_now(),"reason":str(error)})
+                        cleanup_worker={**worker,"state":"STOPPED","finished_at":utc_now(),"reason":safe_exception(error)})
             raise
 
     def finalize(self) -> dict:
@@ -488,7 +529,7 @@ class Lifecycle:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("action",choices=("deliver","resume","cleanup","finalize-cleanup","complete-app-cleanup","wait-app-cleanup","status"))
     parser.add_argument("--repo",type=Path,default=ROOT)
     parser.add_argument("--id",required=True)
@@ -503,7 +544,7 @@ def main():
         lifecycle = Lifecycle(args.repo,args.id)
         if lifecycle.task().get("host_platform") != os.name:
             raise ValueError("Use the registered lifecycle host Git implementation")
-        with FileLease(lifecycle.store.root/"locks/integration.lock"), FileLease(lifecycle.store.root/"locks"/(args.id+"-controller.lock")):
+        with integration_scope(lifecycle.store), FileLease(lifecycle.store.root/"locks"/(args.id+"-controller.lock")):
             if args.action in {"deliver","resume"}:
                 result = lifecycle.deliver()
             elif args.action=="wait-app-cleanup":
@@ -523,12 +564,10 @@ def main():
     except (ValueError,OSError,RuntimeError,subprocess.SubprocessError) as error:
         if "lifecycle" in locals():
             try:
-                lifecycle.update("operation-blocked",last_error=str(error),blocked_at=utc_now())
+                lifecycle.update("operation-blocked",last_error=safe_exception(error),blocked_at=utc_now())
             except (OSError,ValueError):
                 pass
-        reason = str(error)
-        if isinstance(error,subprocess.CalledProcessError) and error.stderr:
-            reason += ": "+error.stderr.decode("utf-8",errors="replace")[-2000:]
+        reason = safe_exception(error)
         print(json.dumps({"status":"BLOCKED","reason":reason}))
         return 2
 

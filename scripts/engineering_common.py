@@ -18,6 +18,21 @@ SCHEMA_VERSION = 1
 STATUSES = {"PASS", "FAIL", "BLOCKED", "NOT_RUN"}
 
 
+def safe_diagnostic(value, limit=8192):
+    from controller_leases import safe_diagnostic as formatter
+    return formatter(value, limit)
+
+
+def safe_exception(error):
+    from controller_leases import safe_exception as formatter
+    return formatter(error)
+
+
+def safe_error_payload(value):
+    from controller_leases import safe_error_payload as formatter
+    return formatter(value)
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

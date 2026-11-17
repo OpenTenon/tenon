@@ -293,7 +293,13 @@ class GitAliasTests(RepositoryFixture):
         self.run_git('init','--quiet');self.run_git('config','user.name','Tenon alias fixture')
         self.run_git('config','user.email','fixture@example.invalid')
         shutil.copytree(ROOT/'scripts',self.root/'scripts',ignore=shutil.ignore_patterns('__pycache__'))
-        (self.root/'scripts/tenon.py').write_text("import sys,json\nprint(json.dumps(sys.argv[1:]))\nraise SystemExit(7 if 'fail' in sys.argv else 0)\n",encoding='utf-8')
+        from controller_leases import EARLY_GUARD
+        import ast
+        tree=ast.parse((self.root/'scripts/tenon.py').read_text(encoding='utf-8'))
+        install=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='install')
+        literal=next(node.value.value for node in ast.walk(install) if isinstance(node,ast.Assign)
+                     and any(isinstance(name,ast.Name) and name.id=='launcher' for name in node.targets) and isinstance(node.value,ast.Constant))
+        (self.root/'scripts/tenon.py').write_text("from __future__ import annotations\n"+EARLY_GUARD+"\ndef install():\n    launcher = "+repr(literal)+"\nimport sys,json\nprint(json.dumps(sys.argv[1:]))\nraise SystemExit(7 if 'fail' in sys.argv else 0)\n",encoding='utf-8')
         self.run_git('add','.');self.run_git('commit','--quiet','-m','source-pinned alias fixture')
         self.run_git('update-ref','refs/remotes/origin/dev','HEAD')
 

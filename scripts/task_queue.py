@@ -9,9 +9,10 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from engineering import required_ids
-from engineering_common import digest, git, source_state, utc_now, validate_evidence, write_json
+from engineering_common import digest, git, source_state, utc_now, validate_evidence, write_json, safe_diagnostic, safe_exception, safe_error_payload
 from task_archive import expected_head, ownership_errors, verify_task_archive, worktrees
 from task_lifecycle import Lifecycle
+from controller_leases import integration_scope
 from task_store import FileLease, TaskStore, identifier
 
 
@@ -25,6 +26,13 @@ def read_queue(store: TaskStore, task_id: str) -> dict:
             or value.get("task_id") != task_id):
         raise ValueError("Queue identity/version differs")
     return value
+
+
+def _write_queue(path, entry):
+    safe = safe_error_payload(entry)
+    entry.clear()
+    entry.update(safe)
+    write_json(path, entry)
 
 
 def submit(repo: Path, task_id: str) -> dict:
@@ -63,23 +71,51 @@ def submit(repo: Path, task_id: str) -> dict:
                  "generation": (previous or {}).get("generation", 0) + 1,
                  "history": (previous or {}).get("history", []) +
                      ([{key: item for key, item in previous.items() if key != "history"}] if previous else [])}
+        value = safe_error_payload(value)
         write_json(path, value)
         return value
 
 
 def classify(error: BaseException) -> str:
+    from controller_leases import ControllerBusy
+    if isinstance(error, ControllerBusy):
+        return "RESOURCE"
+    if getattr(error, "winerror", None) == 5:
+        return "POLICY"
     if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)) or getattr(error, "winerror", None) == 32:
         return "RESOURCE" if getattr(error, "winerror", None) == 32 else "TRANSIENT"
     if isinstance(error, (ValueError, KeyError)):
         return "POLICY"
     text = str(error).lower()
     if isinstance(error, subprocess.CalledProcessError):
+        try:
+            reported = json.loads(error.stdout or b"")
+        except (ValueError, TypeError):
+            reported = None
+        if (isinstance(reported, dict) and reported.get("status") == "BLOCKED"
+                and reported.get("error_type") == "ControllerBusy" and reported.get("error_category") == "RESOURCE"
+                and reported.get("winerror") in {None, 33}):
+            return "RESOURCE"
+        if isinstance(reported, dict) and reported.get("winerror") == 5:
+            return "POLICY"
         # CalledProcessError.__str__ contains argv, including SSH ConnectTimeout.
         # Only process diagnostics can establish a transport failure.
         diagnostic = error.stderr or error.stdout or b""
         text = diagnostic.decode("utf-8", errors="replace").lower() if isinstance(diagnostic, bytes) else diagnostic.lower()
     if any(fragment in text for fragment in ("bad credentials", "authentication failed", "permission denied", "http 401", "resource not accessible by integration")):
         return "POLICY"
+    if isinstance(error, subprocess.CalledProcessError) and isinstance(error.cmd, (list, tuple)) and error.cmd:
+        # Go/gh reports an HTTP transport EOF with method and URL. Bare EOF,
+        # JSON/archive truncation and other executables are not transport proof.
+        executable = Path(str(error.cmd[0])).name.casefold()
+        diagnostic = error.stderr or error.stdout or b""
+        diagnostic = diagnostic.decode("utf-8", errors="replace") if isinstance(diagnostic, bytes) else diagnostic
+        match = re.fullmatch(r'(?:gh: )?(?:Get|Post|Put|Patch|Delete|Head|Options) "(https://[^"\s]+)": (?:unexpected )?EOF\s*', diagnostic)
+        if executable in {"gh", "gh.exe"} and match:
+            from urllib.parse import urlsplit
+            endpoint = urlsplit(match[1])
+            if endpoint.hostname and endpoint.username is None and endpoint.password is None:
+                return "TRANSIENT"
     if any(fragment in text for fragment in ("timed out", "timeout", "connection reset", "connection refused",
             "could not resolve", "unable to resolve", "network is unreachable", "http 502", "http 503", "http 504",
             "a connection attempt failed because the connected party did not properly respond",
@@ -87,6 +123,10 @@ def classify(error: BaseException) -> str:
             "http 429", "api rate limit exceeded", "secondary rate limit")):
         return "TRANSIENT"
     return "POLICY"
+
+
+def diagnostic_reason(error: BaseException) -> str:
+    return safe_exception(error)
 
 
 def derived_candidate(store: TaskStore, task: dict, old: str, new: str) -> bool:
@@ -155,7 +195,7 @@ def _event(active, operation, entry, *, status=None, category=None, reason=None,
         classification = ("transient-retry" if category == "TRANSIENT" else "resource-retry" if category == "RESOURCE"
             else "policy-blocked" if category else "ci-wait" if status in {"WAITING_CI", "WAITING_DEV_CI"}
             else "resource-wait" if status == "WAITING_RESOURCE" else "phase-result")
-        payload.update(status=status, classification=classification, error_category=category, reason=reason,
+        payload.update(status=status, classification=classification, error_category=category, reason=safe_diagnostic(reason) if reason is not None else None,
                        observed_candidate=entry["candidate_sha"], stage=entry["stage"])
     provenance = {"recorded_at": active["started_at"] if operation == "controller-start" else utc_now(),
                   "source": "queue-v1", "coverage": "queued-candidate logical operations"}
@@ -241,7 +281,7 @@ def _drain_observations(store, task_id, path, entry):
         row["observation_outbox"] = []
         changed = True
     if changed:
-        write_json(path, entry)
+        _write_queue(path, entry)
 
 
 def _begin_attempt(store, task, path, entry):
@@ -264,7 +304,7 @@ def _begin_attempt(store, task, path, entry):
         if active.get("derivations") != chain:
             active["derivations"] = chain
             # Capture accepted hops before another operation can replace the last intent.
-            write_json(path, entry)
+            _write_queue(path, entry)
     else:
         active = {"owner_id": entry["owner_id"], "generation": generation, "input_candidate": entry["candidate_sha"],
                   "ordinal": entry["attempts"] + 1, "started_at": utc_now(), "derivations": []}
@@ -273,7 +313,7 @@ def _begin_attempt(store, task, path, entry):
             "from_generation": generation, "from_attempt": active["ordinal"],
             "complete_from_generation_start": entry["attempts"] == 0, "input_candidate": entry["candidate_sha"]})
         entry.setdefault("observation_outbox", []).append(_event(active, "controller-start", entry))
-        write_json(path, entry)
+        _write_queue(path, entry)
     _drain_observations(store, task["task_id"], path, entry)
     return active
 
@@ -313,10 +353,10 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
                 task = preflight(store, entry)
                 results.append({"task_id": task_id, "state": "READY", "task_status": task["status"]})
             except (OSError, ValueError, KeyError) as error:
-                results.append({"task_id": task_id, "state": "BLOCKED", "reason": str(error)})
+                results.append({"task_id": task_id, "state": "BLOCKED", "reason": diagnostic_reason(error)})
             continue
         # One integration owner and the same per-task lease used by foreground delivery.
-        with FileLease(store.root / "locks/integration.lock"), FileLease(store.root / "locks" / (task_id + "-controller.lock")):
+        with integration_scope(store), FileLease(store.root / "locks" / (task_id + "-controller.lock")):
             entry = read_queue(store, task_id)
             attempt_started = False
             try:
@@ -356,20 +396,21 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
                 # Preserve its ordinal so a later publisher retry can resume it.
                 unexecuted_start = not attempt_started and bool(entry.get("active_attempt"))
                 entry.update(state="WAITING" if category in {"TRANSIENT", "RESOURCE"} else "BLOCKED",
-                             error_category=category, reason=str(error), attempts=entry["attempts"] + (0 if unexecuted_start else 1),
+                             error_category=category, reason=diagnostic_reason(error), error_type=type(error).__name__, error_exit_code=getattr(error,"returncode",None), attempts=entry["attempts"] + (0 if unexecuted_start else 1),
                              next_attempt_at=(now + timedelta(seconds=min(300, 5 * 2 ** min(entry["attempts"], 6)))).isoformat())
                 if attempt_started:
-                    _finish_attempt(store, store.load(task_id), entry, {"status":entry["state"]}, category, str(error))
+                    _finish_attempt(store, store.load(task_id), entry, {"status":entry["state"]}, category, safe_exception(error))
             entry["updated_at"] = utc_now()
-            write_json(path, entry)
+            _write_queue(path, entry)
             _drain_observations(store, task_id, path, entry)
             results.append({"task_id": task_id, "state": entry["state"], "reason": entry.get("reason")})
         # The external controller acquires its own task lock; do not hold ours across this handoff.
         if external:
             try:
+                from controller_leases import entry_command
                 primary = Path(external["repo"])
-                output = subprocess.check_output([__import__("sys").executable, external["controller"], "cleanup",
-                    "--repo", str(primary), "--id", task_id], cwd=primary, stderr=subprocess.PIPE)
+                output = subprocess.check_output(entry_command(Path(external["controller"]), "cleanup",
+                    "--repo", str(primary), "--id", task_id), cwd=primary, stderr=subprocess.PIPE)
                 result = json.loads(output)
                 with FileLease(store.root / "locks" / (task_id + "-controller.lock")):
                     entry = read_queue(store, task_id)
@@ -378,18 +419,18 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
                     if entry.get("active_attempt"):
                         entry["attempts"] += 1
                     _finish_attempt(store, store.load(task_id), entry, result)
-                    write_json(path, entry)
+                    _write_queue(path, entry)
                 results[-1] = {"task_id": task_id, "state": entry["state"]}
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                 with FileLease(store.root / "locks" / (task_id + "-controller.lock")):
                     entry = read_queue(store, task_id)
                     entry.update(state="WAITING" if classify(error) in {"RESOURCE", "TRANSIENT"} else "BLOCKED",
-                                 reason=str(error), error_category=classify(error))
+                                 reason=diagnostic_reason(error), error_type=type(error).__name__, error_exit_code=getattr(error,"returncode",None), error_category=classify(error))
                     if entry.get("active_attempt"):
                         entry["attempts"] += 1
-                    _finish_attempt(store, store.load(task_id), entry, {"status":entry["state"]}, classify(error), str(error))
-                    write_json(path, entry)
-                results[-1] = {"task_id": task_id, "state": entry["state"], "reason": str(error)}
+                    _finish_attempt(store, store.load(task_id), entry, {"status":entry["state"]}, classify(error), safe_exception(error))
+                    _write_queue(path, entry)
+                results[-1] = {"task_id": task_id, "state": entry["state"], "reason": diagnostic_reason(error)}
             # The operation result is durable. Publisher failure must preserve its
             # closed state/ordinal/outbox, exactly like the ordinary result path.
             # A later reconcile only drains; it never reclassifies the operation.

@@ -21,6 +21,149 @@ import task_worker
 
 
 class QueueTests(OwnedWorktreeFixture):
+    def test_all_error_persistence_channels_share_redaction_including_short_values(self):
+        import task_observations
+        import maintenance
+        self.enqueue()
+        write_json=common.write_json
+        write_json(self.store.root/'worker.json',{'schema_version':1,'repo_id':self.store.repo_id,'enabled':True})
+        marker='dummy-user:dummy-secret-value'
+        error=subprocess.CalledProcessError(128,['git','push','https://'+marker+'@github.com/fixture/repo'],
+            stderr=b'Authorization: Bearer dummy-header-secret\nhelper p7w4d short-value z9')
+        failed=mock.Mock();failed.deliver.side_effect=error
+        original_drain=task_queue._drain_observations
+        def defer_result(store,task_id,path,entry):
+            if any(event['payload'].get('operation')=='controller-result' for event in entry.get('observation_outbox',[])):
+                return
+            return original_drain(store,task_id,path,entry)
+        def worker_reconcile(repo,apply=False):
+            return task_queue.reconcile(repo,apply,lambda *_:failed)
+        secrets=(marker,'dummy-header-secret','p7w4d','z9')
+        with mock.patch.dict(os.environ,{'REVIEW_PASSWORD':'p7w4d','SHORT_API_KEY':'z9'}), \
+                mock.patch.object(task_queue,'_drain_observations',side_effect=defer_result), \
+                mock.patch.object(task_worker,'reconcile',side_effect=worker_reconcile), \
+                mock.patch.object(maintenance,'run_due',return_value={'status':'NOT_DUE'}):
+            summary=task_worker.run(self.root,max_seconds=0.001,interval=0.001)
+            queued=task_queue.read_queue(self.store,'owned')
+            self.assertTrue(queued['observation_outbox'])
+            for secret in secrets:
+                self.assertNotIn(secret,json.dumps(queued))
+                self.assertNotIn(secret,json.dumps(summary))
+            # A later publisher drains the already safe result, without running
+            # the failed operation again or inventing a new attempt.
+            original_drain(self.store,'owned',task_queue.queue_path(self.store,'owned'),queued)
+        events=task_observations.machine_events(self.store.load('owned'),queued,repo=self.root)[0]
+        self.assertTrue(events)
+        for secret in secrets:
+            self.assertNotIn(secret,json.dumps(events))
+            for path in self.store.root.rglob('*'):
+                if path.is_file() and path.suffix in {'.json','.jsonl','.log','.txt'}:
+                    self.assertNotIn(secret,path.read_text(encoding='utf-8'),str(path))
+        self.assertEqual(queued['error_exit_code'],128)
+        self.assertEqual(queued['error_category'],'POLICY')
+
+    def test_external_error_result_persists_no_raw_credentials_in_any_channel(self):
+        import task_observations
+        self.enqueue()
+        external=self.root/'controlled-external.py'
+        factory=mock.Mock();factory.deliver.return_value={'status':'READY_EXTERNAL_CLEANUP','repo':str(self.root),'controller':str(external)}
+        original=subprocess.check_output
+        marker='external-user:external-secret'
+        def fail(command,*args,**kwargs):
+            if isinstance(command,list) and len(command)>1 and command[0]==sys.executable and command[1]==str(external):
+                raise subprocess.CalledProcessError(128,['git','push','https://'+marker+'@github.com/fixture/repo'],
+                    stderr=b'Authorization: Bearer external-header-secret\nhelper p7w4d')
+            return original(command,*args,**kwargs)
+        with mock.patch.dict(os.environ,{'REVIEW_PASSWORD':'p7w4d'}), mock.patch.object(subprocess,'check_output',side_effect=fail):
+            result=task_queue.reconcile(self.root,True,lambda *_:factory)
+        self.assertEqual(result['tasks'][0]['state'],'BLOCKED')
+        entry=task_queue.read_queue(self.store,'owned')
+        self.assertEqual(entry['error_exit_code'],128)
+        self.assertTrue(task_observations.machine_events(self.store.load('owned'),entry,repo=self.root)[0])
+        for secret in (marker,'external-header-secret','p7w4d'):
+            self.assertNotIn(secret,json.dumps(result))
+            for path in self.store.root.rglob('*'):
+                if path.is_file() and path.suffix in {'.json','.jsonl','.log','.txt'}:
+                    self.assertNotIn(secret,path.read_text(encoding='utf-8'),str(path))
+
+    def test_one_character_sensitive_value_is_redacted_idempotently(self):
+        with mock.patch.dict(os.environ,{'REVIEW_PASSWORD':'Q'}):
+            first=task_queue.diagnostic_reason(RuntimeError('helper value Q'))
+            second=common.safe_diagnostic(first)
+        self.assertNotIn('Q',first)
+        self.assertEqual(first,second)
+
+    def test_common_formatters_fail_closed_when_their_single_helper_is_unavailable(self):
+        calls = [(common.safe_diagnostic, 'diagnostic sentinel'),
+                 (common.safe_exception, RuntimeError('exception sentinel')),
+                 (common.safe_error_payload, {'reason':'payload sentinel'})]
+        with mock.patch.dict(sys.modules, {'controller_leases':None}):
+            for formatter, value in calls:
+                with self.subTest(formatter=formatter.__name__), self.assertRaises(ModuleNotFoundError):
+                    formatter(value)
+
+    def test_actual_gh_http_transport_eof_is_narrowly_retryable(self):
+        endpoint = 'https://api.github.com/repos/OpenTenon/tenon/pulls?state=all&head=OpenTenon:dev-20261117-skills-offline-skills&base=dev&per_page=100'
+        for ending in ('EOF', 'unexpected EOF'):
+            error = subprocess.CalledProcessError(1, ['gh', 'api', 'repos/OpenTenon/tenon/pulls'],
+                stderr=('Get "'+endpoint+'": '+ending+'\n').encode())
+            self.assertEqual(task_queue.classify(error), 'TRANSIENT')
+        for command, message in ((['gh','api'],'EOF'), (['gh','api'],'unexpected EOF'),
+                (['gh','api'],'invalid JSON: unexpected EOF'), (['gh','api'],'archive payload truncated: EOF'),
+                (['git','fetch'],'Get "'+endpoint+'": EOF'),
+                (['gh','api'],'Get "'+endpoint+'": EOF\nHTTP 401 Bad credentials'),
+                (['gh','api'],'Get "http://api.github.com/example": EOF')):
+            with self.subTest(command=command,message=message):
+                self.assertEqual(task_queue.classify(subprocess.CalledProcessError(1,command,stderr=message.encode())), 'POLICY')
+
+    def test_http_eof_waits_then_recovers_without_repairing_the_queue(self):
+        self.enqueue()
+        failed = mock.Mock()
+        failed.deliver.side_effect = subprocess.CalledProcessError(1,['gh','api','repos/fixture/repo/pulls'],
+            stderr=b'Get "https://api.github.com/repos/fixture/repo/pulls?state=all": EOF\n')
+        now = datetime.now(timezone.utc)
+        result = task_queue.reconcile(self.root,True,lambda *_:failed,now)
+        self.assertEqual(result['tasks'][0]['state'],'WAITING')
+        entry = task_queue.read_queue(self.store,'owned')
+        self.assertEqual(entry['error_category'],'TRANSIENT')
+        self.assertIn('EOF',entry['reason'])
+        self.assertEqual(entry['generation'],1)
+        self.assertEqual(entry['error_exit_code'],1)
+        later = task_queue.reconcile(self.root,True,self.factory,now+timedelta(minutes=6))
+        self.assertEqual(later['tasks'][0]['state'],'DONE')
+        self.assertEqual(task_queue.read_queue(self.store,'owned')['generation'],1)
+
+    def test_controlled_error_record_sanitizes_credentials_but_keeps_status_and_exit(self):
+        self.enqueue()
+        failed=mock.Mock()
+        failed.deliver.side_effect=subprocess.CalledProcessError(128,['git','push','https://name:password@github.com/fixture/repo'],
+            stderr=b'Get "https://name:password@api.github.com/path?access_token=query-secret": EOF\nAuthorization: Bearer header-secret\nTEST_SECRET_TOKEN=environment-secret-value')
+        with mock.patch.dict(os.environ,{'TEST_SECRET_TOKEN':'environment-secret-value'}):
+            result=task_queue.reconcile(self.root,True,lambda *_:failed)
+        self.assertEqual(result['tasks'][0]['state'],'BLOCKED')
+        entry=task_queue.read_queue(self.store,'owned')
+        self.assertEqual(entry['error_category'],'POLICY')
+        self.assertEqual(entry['error_exit_code'],128)
+        self.assertIn('EOF',entry['reason'])
+        self.assertIn('api.github.com',entry['reason'])
+        for secret in ('name:password','query-secret','header-secret','environment-secret-value'):
+            self.assertNotIn(secret,json.dumps(entry))
+        self.assertEqual(task_queue.classify(subprocess.CalledProcessError(128,['git','push'])),'POLICY')
+
+    def test_error_redaction_precedes_truncation_and_handles_quoted_fields(self):
+        sentinel='boundary-secret-sentinel-123456789'
+        secret='prefix-'+sentinel+'-suffix'
+        error=subprocess.CalledProcessError(128,['git','push'],stderr=(
+            'Authorization: Bearer '+secret+'\n'+('x'*8140)+'\n'+
+            '{"access_token": "quoted-token-secret", "PASSWORD": "quoted password secret"}\n').encode())
+        value=task_queue.diagnostic_reason(error)
+        self.assertLessEqual(len(value),8192)
+        for item in (sentinel,'quoted-token-secret','quoted password secret','prefix-','-suffix'):
+            self.assertNotIn(item,value)
+        with mock.patch.dict(os.environ,{'INTERNAL_API_KEY':sentinel}):
+            second=task_queue.diagnostic_reason(subprocess.CalledProcessError(1,['gh','api'],stderr=('raw-value '+sentinel+'\n'+('x'*8180)).encode()))
+        self.assertNotIn('sentinel',second)
+
     def factory(self, repo, task_id):
         self.assertEqual(repo, self.root)
         self.assertEqual(task_id, "owned")

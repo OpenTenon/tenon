@@ -4,27 +4,319 @@
   "shard_count": 2,
   "module_assignments": {
     "test_background": 0,
-    "test_ci_contract": 1,
-    "test_delivery": 1,
+    "test_ci_contract": 0,
+    "test_controller_leases": 0,
+    "test_delivery": 0,
     "test_engineering": 1,
-    "test_engineering_tests": 0,
+    "test_engineering_tests": 1,
     "test_entrypoint": 1,
     "test_failures": 1,
     "test_file_leases": 1,
+    "test_health_drills": 0,
     "test_lifecycle_v2": 1,
-    "test_maintenance": 1,
+    "test_maintenance": 0,
     "test_metrics": 0,
     "test_skill_governance": 1,
-    "test_task_contracts": 0
+    "test_skill_offline": 1,
+    "test_task_context_observations": 1,
+    "test_task_contracts": 1,
+    "test_windows_shards": 1
   },
   "unknown_module_assignment": "sha256-utf8-big-endian-modulo",
   "profile": {
-    "run_id": 44058738635,
-    "run_attempt": 1,
-    "candidate_sha": "1e67600f0c7249a4dc08211ce9d231a9c5bf4211",
-    "checkout_sha": "de78b1513d8547a0c6306ab60b480531d733a49e",
-    "artifact_id": 14317631833,
-    "case_report_sha256": "6ec0897289b0d5f53597370ff8b8d043feddaa48e1557e62bf4939a6ce3278c5"
+    "kind": "mixed-source-local-whole-module-observations",
+    "source_before_map": {
+      "sha": "443cab587cad4f568c4e179e97e8121dfece3c63",
+      "branch": "dev-20261117-controller-leases-leases",
+      "worktree_sha256": "cf7e25e78175e49bc344296d07cdd2d79ddc0bb43b5d08c129e777d474444537",
+      "diff_sha256": "465c3368e6968886612ef7a3c8a81b45dff6e4e95885b46256a262360c06b810",
+      "dirty": true
+    },
+    "released_baseline_commit": "b27b9b0fccbe94a60a029e25e3cd496b95aa0c3f",
+    "released_baseline_map_sha256": "e81572927fed3de95ec8f3bb91b53e443ce93eb9987f95a362f32bd8ed8a3496",
+    "reports": [
+      {
+        "path": "operations/20261117-controller-leases/profile-local/diagnostic-before-lazy.json",
+        "sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "overall_status": "FAIL",
+        "selection": "Only complete successful modules; affected modules excluded."
+      },
+      {
+        "path": "build/verification/phase2-profile-local/windows-focused-after-lazy.json",
+        "sha256": "218c7f22fc946a862de49d182fb21b27479fefb5eeaf9ddbb5a31fa00c33fc56",
+        "overall_status": "PASS",
+        "partial": true,
+        "selection": "Successful complete affected modules replace old failed-module observations; windows-shards is superseded below."
+      },
+      {
+        "path": "build/verification/phase2-profile-local/windows-map-fixture-repair.json",
+        "sha256": "6d862b952472d4bec454b1943c53f9acf365aa88e996ca0b98cbce1ae48ba094",
+        "overall_status": "PASS",
+        "partial": true,
+        "selection": "Current-source complete windows-shards module supersedes the earlier unchanged-fixture measurement."
+      }
+    ],
+    "module_observations": [
+      {
+        "module": "test_background",
+        "cases": 29,
+        "case_seconds": 66.21902869921178,
+        "outcomes": {
+          "PASS": 29
+        },
+        "report_sha256": "218c7f22fc946a862de49d182fb21b27479fefb5eeaf9ddbb5a31fa00c33fc56",
+        "report_status": "PASS",
+        "source_fingerprint": "32586727999186d9648bce0e1ab863af49ea10912801d3a248d9da94f7bf2438",
+        "module_source_sha256": "f197e5face225a036e94a08246dd87442eca376083a294fd746cd4cabc64be72",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_ci_contract",
+        "cases": 20,
+        "case_seconds": 16.057693399954587,
+        "outcomes": {
+          "PASS": 20
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "4ae67acaa678e9dfca92b641841c221bd7b977cd4a54d165335c84dfdfc82628",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_controller_leases",
+        "cases": 29,
+        "case_seconds": 104.91022390127182,
+        "outcomes": {
+          "PASS": 29
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "35de065b005355d5f11f68279cb990bc3d5485e87e2c564e5e230100da7a14be",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_delivery",
+        "cases": 9,
+        "case_seconds": 0.00137300044298172,
+        "outcomes": {
+          "PASS": 9
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "e188e08609a79d6a3e1be3913efd0944ccc44d1a12f8e6c3e5024f01d1db3163",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_engineering",
+        "cases": 32,
+        "case_seconds": 15.080193100031465,
+        "outcomes": {
+          "PASS": 30,
+          "SKIP": 2
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "5517e224603e8d3a70b5151fc6ece458733685b2cf6d1c431503792c754a5d7c",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_engineering_tests",
+        "cases": 15,
+        "case_seconds": 11.395777598954737,
+        "outcomes": {
+          "PASS": 14,
+          "SKIP": 1
+        },
+        "report_sha256": "218c7f22fc946a862de49d182fb21b27479fefb5eeaf9ddbb5a31fa00c33fc56",
+        "report_status": "PASS",
+        "source_fingerprint": "32586727999186d9648bce0e1ab863af49ea10912801d3a248d9da94f7bf2438",
+        "module_source_sha256": "cb7835968401a994cd04a8e16872c511786fa58d3196c7b31a8317227c06bc36",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_entrypoint",
+        "cases": 8,
+        "case_seconds": 11.762413200456649,
+        "outcomes": {
+          "PASS": 8
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "7c808889f40437be46eeaa19c1d325165c7401773d80de1571d6d0af232435c5",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_failures",
+        "cases": 22,
+        "case_seconds": 14.816174200270325,
+        "outcomes": {
+          "PASS": 22
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "658eaac93e7e0d3ebf76771fe526b7d0908d5331e2c4085a5cb4671514855b5a",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_file_leases",
+        "cases": 8,
+        "case_seconds": 0.6892146994359791,
+        "outcomes": {
+          "PASS": 8
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "5529d9020f304c9af137b94b950f8ee4c71d32261f2577a7f226bc15b44103f2",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_health_drills",
+        "cases": 25,
+        "case_seconds": 187.63214380061254,
+        "outcomes": {
+          "PASS": 25
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "80e2ed7b461343ec6853690cf20162e7a815b4e2efce3afb7d10baaa58713838",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_lifecycle_v2",
+        "cases": 45,
+        "case_seconds": 72.52579529723153,
+        "outcomes": {
+          "PASS": 45
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "4573b383a068ffc4ed88b26816bb6dba1a6f53775e8d5d4bf2e64b7d369e5342",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_maintenance",
+        "cases": 13,
+        "case_seconds": 19.820736000314355,
+        "outcomes": {
+          "PASS": 13
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "b0be328dbc2bf21bf186083f0af38e0418f0e8e94a3aa4fb00c711beae7ed352",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_metrics",
+        "cases": 25,
+        "case_seconds": 13.488826102111489,
+        "outcomes": {
+          "PASS": 25
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "e50ea602a23e83703b5815254e96a1fc32ca9f2ecbd9ed0ebf306ad90653ce1b",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_skill_governance",
+        "cases": 33,
+        "case_seconds": 35.492851299233735,
+        "outcomes": {
+          "PASS": 33
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "04a8131bb4da7d17c3a658846dec1a8e0db0ba1b1d1a0ea1c7502ad5876f7599",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_skill_offline",
+        "cases": 13,
+        "case_seconds": 42.41989040048793,
+        "outcomes": {
+          "PASS": 13
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "b06d3044bde056cdf94d5a34029a0198cce5d4bd072dd77b5bd08f97f25cf993",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_task_context_observations",
+        "cases": 30,
+        "case_seconds": 73.60213760100305,
+        "outcomes": {
+          "PASS": 30
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "a9a58a605cc0ea73813a374b3429d682dd8f95bf73ba7bdfc48e2fbd5170dbc6",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_task_contracts",
+        "cases": 41,
+        "case_seconds": 116.87960959970951,
+        "outcomes": {
+          "PASS": 41
+        },
+        "report_sha256": "ef7cdfc5d6497bb8f63304d55758e52209ad9279322dd4aa11ae8683dc999d2b",
+        "report_status": "FAIL",
+        "source_fingerprint": "b8eff249662051688259d83b06b807333587cbc8dc48a3477fa32b23553d4a27",
+        "module_source_sha256": "01d223d47444d36969aedeb8c0e33b4fe8ca88b6da42aaa2c1d406dce817bfad",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      },
+      {
+        "module": "test_windows_shards",
+        "cases": 19,
+        "case_seconds": 13.465686900075525,
+        "outcomes": {
+          "PASS": 19
+        },
+        "report_sha256": "6d862b952472d4bec454b1943c53f9acf365aa88e996ca0b98cbce1ae48ba094",
+        "report_status": "PASS",
+        "source_fingerprint": "cf7e25e78175e49bc344296d07cdd2d79ddc0bb43b5d08c129e777d474444537",
+        "module_source_sha256": "38b9abff4cf258551e73e6d506ca3944b46892363d82a9c8c8af42d577e309c9",
+        "qualification": "Complete successful module observation; SKIP measures reporting time and does not claim skipped behavior ran."
+      }
+    ],
+    "observed_case_seconds_by_shard_before": [
+      324.0052700014785,
+      492.2544987993315
+    ],
+    "observed_case_seconds_by_shard_after": [
+      408.13002490391955,
+      408.12974389689043
+    ],
+    "selected_cases_by_shard": [
+      150,
+      266
+    ],
+    "critical_native_cases": [
+      "test_background.QueueTests.test_real_windows_interrupted_git_removal_resumes_after_handle_release",
+      "test_lifecycle_v2.ArchiveAndCleanupTests.test_native_windows_probe_observes_a_real_sharing_lease_without_deletion"
+    ],
+    "hosted_dev5_comparison_only": {
+      "commit": "b27b9b0fccbe94a60a029e25e3cd496b95aa0c3f",
+      "run_id": 44115204589,
+      "attempt": 1,
+      "module_weights_sha256": "ea3d4297aef24868468be863b4cb79001b438142801622b1c2a467f02713477f"
+    },
+    "objective": "Minimize maximum observed case sum by exhaustive whole-module partition; keep native-file-lease orientation, then minimize moves on exact ties."
   },
-  "qualification": "Whole modules balanced from successful Windows case timings; shared fixture/provisioning/report overhead is not a speedup claim"
+  "qualification": "Mixed local native Windows measurements, with raw report/source provenance per module; not a single green run, full handoff evidence, hosted CI wall prediction or formal benchmark. The shared common change only defers importing the unchanged single formatter. Skips remain explicit; unknown timings are never filled with zero. Future unknown modules retain stable-hash allocation."
 }

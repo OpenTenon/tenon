@@ -208,6 +208,14 @@ def full_doctor(repo: Path, *, schedule_probe=None, distribution_probe=None) -> 
         if alias and _git(primary, "config", "--local", "--get-all", "alias.tenon").decode().strip() != alias.get("value"):
             raise ValueError("The recorded owned git tenon alias differs")
         add("installed-entry", "READY", "Controller source and launcher template match the installed revision", commit=commit)
+        from controller_leases import version_observation
+        execution = version_observation(base, controller)
+        if installation.get("controller_lease_abi") != 1 or execution.get("state") == "UNKNOWN":
+            add("controller-execution", "UNKNOWN", execution.get("reason", "Installed source has no known execution admission ABI"),
+                observation=execution, next_commands=[install_command],
+                recovery="Use the qualified source installer; missing/legacy controller records are never repaired by doctor")
+        else:
+            add("controller-execution", "READY", "Source-proved ABI and immutable native execution anchor are valid", observation=execution)
     except INSPECTION_ERRORS as error:
         installation = installation if "installation" in locals() else None
         add("installed-entry", "BLOCKED", str(error), next_commands=[install_command])

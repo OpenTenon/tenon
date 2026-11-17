@@ -1,6 +1,45 @@
 #!/usr/bin/env python3
 """Bounded, model-free host worker and owned Windows Task Scheduler registration."""
 from __future__ import annotations
+
+# Controller execution ABI 1: keep before all local/business imports.
+import os as _tenon_os
+import sys as _tenon_sys
+from pathlib import Path as _tenon_Path
+
+def _tenon_cache_entry():
+    entry = _tenon_Path(__file__).absolute()
+    version = entry.parent.parent
+    if (entry.parent.name != "scripts" or version.parent.name != "controllers"
+            or version.parent.parent.name != "tenon" or len(version.name) != 40
+            or any(char not in "0123456789abcdef" for char in version.name)):
+        return
+    module = _tenon_sys.modules.get("controller_leases")
+    if module is not None and module.active_for(entry):
+        return
+    if __name__ != "__main__":
+        raise RuntimeError("Owned controller imports require an admitted execution; use the installed entry")
+    _tenon_sys.dont_write_bytecode = True
+    _tenon_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+    launcher = version.parent.parent / "bin/tenon.py"
+    if not launcher.is_file():
+        raise RuntimeError("Controller admission is unavailable; run the qualified source installer explicitly")
+    import json as _tenon_boot_json
+    configuration = _tenon_boot_json.loads((launcher.parent / "installation.json").read_bytes())
+    if configuration.get("controller_lease_abi") != 1:
+        raise RuntimeError("Installed launcher has no execution admission ABI; run the qualified new source installer explicitly after dev is green")
+    import runpy as _tenon_runpy
+    _tenon_sys.argv = [str(launcher), "_controller", str(entry), *_tenon_sys.argv[1:]]
+    _tenon_runpy.run_path(str(launcher), run_name="__main__")
+    raise SystemExit(0)
+
+try:
+    _tenon_cache_entry()
+except (OSError, ValueError, RuntimeError) as _tenon_error:
+    import json as _tenon_json
+    print(_tenon_json.dumps({"status": "BLOCKED", "reason": str(_tenon_error)}))
+    raise SystemExit(2)
+
 import csv
 import io
 import json
@@ -11,6 +50,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from engineering_common import safe_exception, safe_error_payload
 from engineering_common import utc_now, write_json
 from task_archive import verify_task_archive, worktrees
 from task_queue import reconcile
@@ -64,7 +104,7 @@ def run(repo: Path, max_seconds: float = 900, interval: float = 25) -> dict:
             enabled = configuration(store)["enabled"]
             value = reconcile(repo, apply=enabled)
             value.update(**identity, enabled=enabled, completed_at=utc_now())
-            write_json(store.root / "operations/worker-latest.json", value)
+            write_json(store.root / "operations/worker-latest.json", safe_error_payload(value))
             pending = any(item["state"] in {"WAITING", "BACKOFF", "QUEUED"} for item in value["tasks"])
             if enabled and not pending:
                 try:
@@ -72,12 +112,12 @@ def run(repo: Path, max_seconds: float = 900, interval: float = 25) -> dict:
                     upkeep = run_due(repo)
                     value["maintenance"] = {name: upkeep.get(name) for name in ("status", "report", "next_attempt_at")}
                 except (OSError, ValueError, KeyError, RuntimeError, ImportError, subprocess.SubprocessError) as error:
-                    value["maintenance"] = {"status": "BLOCKED", "reason": str(error)}
+                    value["maintenance"] = {"status": "BLOCKED", "reason": safe_exception(error)}
                     write_json(store.root / "operations/maintenance-error.json", {**value["maintenance"], "at": utc_now()})
-                write_json(store.root / "operations/worker-latest.json", value)
+                write_json(store.root / "operations/worker-latest.json", safe_error_payload(value))
             remaining = max_seconds - (time.monotonic() - started)
             if not enabled or not pending or remaining <= 0:
-                return value
+                return safe_error_payload(value)
             time.sleep(min(interval, remaining))
 
 

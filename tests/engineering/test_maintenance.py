@@ -46,6 +46,22 @@ class ArchiveMaintenanceTests(OwnedWorktreeFixture):
                 safe_relative(name)
         self.assertEqual(safe_relative('worktree/build/check.log'), Path('worktree/build/check.log'))
 
+    def test_windows_superscript_device_names_are_rejected_before_archive_payload_access(self):
+        import zipfile
+        for prefix in ('COM','LPT'):
+            for suffix in ('\u00b9','\u00b2','\u00b3'):
+                name='worktree/'+prefix+suffix+'.txt'
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    safe_relative(name)
+                archive=self.root/'reserved-name.zip'
+                payload=b'not a device access'
+                with zipfile.ZipFile(archive,'w') as output:
+                    output.writestr(name,payload)
+                    output.writestr('manifest.json',json.dumps({'schema_version':1,'files':[{
+                        'path':name,'size':len(payload),'sha256':hashlib.sha256(payload).hexdigest()}]}))
+                with self.assertRaises(ValueError):
+                    verify_archive(archive)
+
     def test_monthly_state_and_restore_results_survive_and_are_not_repeated_early(self):
         archive_task(self.store, self.value)
         directory = self.store.root / 'maintenance/fixture'
@@ -76,9 +92,14 @@ class ControllerMaintenanceTests(RepositoryFixture):
         self.store = TaskStore(self.root)
 
     def version(self, text):
-        path = self.root/'scripts/task_lifecycle.py'
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding='utf-8')
+        from controller_leases import EARLY_GUARD, ENTRIES
+        import shutil
+        from test_engineering import ROOT
+        scripts = self.root/'scripts'
+        scripts.mkdir(parents=True, exist_ok=True)
+        for name in ENTRIES:
+            (scripts/name).write_text('from __future__ import annotations\n'+EARLY_GUARD+'\n'+text,encoding='utf-8')
+        shutil.copyfile(ROOT/'scripts/controller_leases.py',scripts/'controller_leases.py')
         self.run_git('add', 'scripts')
         self.run_git('commit', '--quiet', '-m', 'controller fixture ' + text)
         commit = self.run_git('rev-parse', 'HEAD').decode().strip()
@@ -89,7 +110,7 @@ class ControllerMaintenanceTests(RepositoryFixture):
 
     def test_gc_retains_current_previous_active_and_unknown_versions(self):
         versions = [self.version('print('+str(index)+')\n') for index in range(4)]
-        write_json(self.store.root/'bin/installation.json', {'repo_id':self.store.repo_id, 'commit':versions[3], 'previous_commit':versions[2]})
+        write_json(self.store.root/'bin/installation.json', {'schema_version':1,'repo_id':self.store.repo_id, 'commit':versions[3], 'previous_commit':versions[2]})
         self.store.create({'task_id':'active', 'branch':'dev-active', 'worktree':str(self.root/'build/active'),
             'status':'ACTIVE', 'host_platform':os.name, 'controller':str(self.store.root/'controllers'/versions[1]/'scripts/task_lifecycle.py')})
         unknown = self.store.root/'controllers/manual'
@@ -110,7 +131,7 @@ class ControllerMaintenanceTests(RepositoryFixture):
         path.write_text("print('tampered')\n")
         manifest_path = directory/'controller.json'
         manifest = json.loads(manifest_path.read_text())
-        manifest['files'][0]['sha256'] = digest(path)
+        next(item for item in manifest['files'] if item['path']=='scripts/task_lifecycle.py')['sha256'] = digest(path)
         write_json(manifest_path, manifest)
         with self.assertRaises(ValueError):
             maintenance.verify_controller(directory, self.root)

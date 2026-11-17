@@ -32,28 +32,24 @@ class HealthTests(RepositoryFixture):
         self.root = self.root.resolve()
 
     def ready(self):
+        from controller_leases import EARLY_GUARD, ENTRIES
+        from task_archive import deploy_controller
         launcher = "#!/usr/bin/env python3\n# immutable fixture launcher\n"
         (self.root / "scripts").mkdir()
-        (self.root / "scripts/tenon.py").write_bytes(("def install():\n    launcher = " + repr(launcher) + "\n").encode())
-        (self.root / "scripts/task_lifecycle.py").write_bytes(b"# owned source fixture\n")
+        for name in ENTRIES:
+            body = "def install():\n    launcher = " + repr(launcher) + "\n" if name == "tenon.py" else "# owned source fixture\n"
+            (self.root / "scripts" / name).write_text("from __future__ import annotations\n" + EARLY_GUARD + "\n" + body, encoding="utf-8")
+        shutil.copyfile(Path(health.__file__).with_name("controller_leases.py"), self.root / "scripts/controller_leases.py")
         self.run_git("add", "scripts")
         self.run_git("commit", "--quiet", "-m", "health source fixture")
         self.commit = self.run_git("rev-parse", "HEAD").decode().strip()
         self.store = TaskStore(self.root)
         base = self.store.root
-        directory = base / "controllers" / self.commit
-        entries = []
-        for name in ("scripts/tenon.py", "scripts/task_lifecycle.py"):
-            payload = self.run_git("show", self.commit + ":" + name)
-            target = directory / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(payload)
-            entries.append({"path": name, "sha256": hashlib.sha256(payload).hexdigest()})
-        write_json(directory / "controller.json", {"schema_version": 1, "commit": self.commit, "files": entries})
+        directory = deploy_controller(self.store, self.commit).parent.parent
         (base / "bin").mkdir()
         (base / "bin/tenon.py").write_bytes(launcher.encode())
         write_json(base / "bin/installation.json", {"schema_version": 1, "repo_id": self.store.repo_id,
-            "repo": str(self.root), "repository": "fixture/tenon", "commit": self.commit, "controller": str(directory)})
+            "repo": str(self.root), "repository": "fixture/tenon", "commit": self.commit, "controller": str(directory), "controller_lease_abi": 1})
         helper = self.root / "build/verifier.py"
         helper.parent.mkdir(exist_ok=True)
         helper.write_bytes(b"# existing frozen verifier, never executed by health\n")
