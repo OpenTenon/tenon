@@ -27,6 +27,10 @@ def files(root):
 
 
 class HealthTests(RepositoryFixture):
+    def setUp(self):
+        super().setUp()
+        self.root = self.root.resolve()
+
     def ready(self):
         launcher = "#!/usr/bin/env python3\n# immutable fixture launcher\n"
         (self.root / "scripts").mkdir()
@@ -562,11 +566,17 @@ print(json.dumps(result), flush=True)
             target.rename(retained)
             try:
                 if os.name == "nt":
+                    self.assertEqual(Path(drills._boundary(manifest)["root"]), root)
+                    self.assertEqual(target.parent, root)
+                    self.assertEqual(missing.parent, root)
+                    self.assertFalse(os.path.lexists(target))
+                    if any(character in str(path) for path in (target, missing) for character in '&|<>^%!"\r\n'):
+                        raise ValueError("Fixture junction paths contain unsupported cmd metacharacters")
                     missing.mkdir()
                     environment = drills._environment()
                     environment.update(TENON_TEST_LINK=str(target), TENON_TEST_TARGET=str(missing))
-                    subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-                        "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:TENON_TEST_LINK -Target $env:TENON_TEST_TARGET | Out-Null"],
+                    subprocess.run('cmd.exe /d /v:off /s /c mklink /J "%TENON_TEST_LINK%" "%TENON_TEST_TARGET%"',
+                        executable=str(Path(os.environ["SystemRoot"]) / "System32/cmd.exe"),
                         env=environment, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
                     missing.rmdir()
                 else:
