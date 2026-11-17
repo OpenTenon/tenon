@@ -289,19 +289,19 @@ def deploy_controller(store: TaskStore, commit: str) -> Path:
 
 
 def _deploy_controller_payload(store: TaskStore, commit: str) -> Path:
+    from controller_leases import source_files
     directory = store.root/"controllers"/commit
     manifest_path = directory/"controller.json"
     if manifest_path.exists():
         verify_controller_source(directory, store.repo, commit)
         return directory/"scripts/task_lifecycle.py"
-    files = git(store.repo,"ls-tree","-r","--name-only",commit,"scripts/").decode().splitlines()
+    files = source_files(store.common, commit)
     if "scripts/task_lifecycle.py" not in files:
         raise ValueError("Verified dev version does not contain the cleanup controller")
     manifest = {"schema_version":1,"commit":commit,"files":[]}
-    for name in files:
+    for name, payload in files.items():
         if not name.startswith("scripts/") or ".." in Path(name).parts:
             raise ValueError("Invalid controller source path")
-        payload = git(store.repo,"show",commit+":"+name)
         path = directory/name
         path.parent.mkdir(parents=True,exist_ok=True)
         path.write_bytes(payload)

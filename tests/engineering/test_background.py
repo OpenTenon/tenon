@@ -93,6 +93,15 @@ class QueueTests(OwnedWorktreeFixture):
         self.assertNotIn('Q',first)
         self.assertEqual(first,second)
 
+    def test_common_formatters_fail_closed_when_their_single_helper_is_unavailable(self):
+        calls = [(common.safe_diagnostic, 'diagnostic sentinel'),
+                 (common.safe_exception, RuntimeError('exception sentinel')),
+                 (common.safe_error_payload, {'reason':'payload sentinel'})]
+        with mock.patch.dict(sys.modules, {'controller_leases':None}):
+            for formatter, value in calls:
+                with self.subTest(formatter=formatter.__name__), self.assertRaises(ModuleNotFoundError):
+                    formatter(value)
+
     def test_actual_gh_http_transport_eof_is_narrowly_retryable(self):
         endpoint = 'https://api.github.com/repos/OpenTenon/tenon/pulls?state=all&head=OpenTenon:dev-20261117-skills-offline-skills&base=dev&per_page=100'
         for ending in ('EOF', 'unexpected EOF'):

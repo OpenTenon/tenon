@@ -83,8 +83,30 @@ state. Tests cover both startup orders, parent exit with a live cached child,
 actual native sharing/access denial, anchor reuse/replacement, real old GC,
 explicit upgrade/rollback, source integrity and read-only fresh-cache trees.
 
+Controller source reads use one NUL-framed, full-tree Git inventory and one
+`cat-file --batch` request for raw blobs. Regular blob types, portable unique
+paths, exact object IDs/sizes, every response header/delimiter and final EOF are
+checked. Blob object hashes corroborate tree membership; raw source SHA256 must
+still match both the manifest SHA256 and the streamed local payload SHA256.
+Replace refs never substitute another object. Payload limits are 4 MiB per file,
+32 MiB total and 4096 entries; batch output is spooled outside the cache rather
+than accumulated without a RAM bound. The exact frozen read-only WSL bridge's
+unsupported-command diagnostic alone selects the old per-file Git-show reader,
+which checks the same inventory, sizes, object bytes and SHA256 chain. Permission,
+timeouts, missing objects, corrupt frames and unexpected output remain failures.
+The bootstrap's initial stdlib helper comes from the exact Git object and then
+uses the same source verifier. No mtime or persistent source-verification cache
+replaces these checks. Framing follows the official [Git ls-tree](https://git-scm.com/docs/git-ls-tree)
+and [Git cat-file](https://git-scm.com/docs/git-cat-file) formats.
+
 Windows module allocation remains a versioned two-shard map with independent union
 and native-case guards. Rebalance it using successful current case timing reports.
+Mixed observations retain each module's result, source fingerprint, source-file
+hash and raw report hash. Failed or incomplete modules provide no successful
+weight; replacement observations remain explicitly partial, and original failed
+reports stay intact. Shared dependency changes and local-versus-hosted limits are
+recorded. Observed case sums exclude shared/reporting overhead and are not CI wall
+predictions; unknown measurements are never filled with zero.
 Formal final measurements use one final dev SHA, fixed `windows-2022` and
 `ubuntu-22.04` labels, initial post-merge attempt plus at most two complete reruns.
 Report wall time and summed Windows/Linux runner seconds separately; the target

@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 import time
+import tempfile
 import uuid
 
 CONTROLLER_LEASE_ABI = 1
@@ -154,12 +155,111 @@ def file_digest(path: Path) -> str:
     return result.hexdigest()
 
 
-def git_source(common: Path, *arguments: str) -> bytes:
+def _source_command(common: Path, *arguments: str):
     environment = os.environ.copy()
     for name in git_location_keys(environment):
         environment.pop(name, None)
-    return subprocess.check_output(["git", "--no-optional-locks", "--git-dir", str(common), "-C", str(common), *arguments],
+    return ["git", "--no-optional-locks", "--no-replace-objects", "--git-dir", str(common), "-C", str(common), *arguments], environment
+
+
+def git_source(common: Path, *arguments: str) -> bytes:
+    command, environment = _source_command(common, *arguments)
+    return subprocess.check_output(command,
         cwd=common, env=environment, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
+
+
+SOURCE_FILE_LIMIT = 4 * 1024 * 1024
+SOURCE_TOTAL_LIMIT = 32 * 1024 * 1024
+SOURCE_ENTRY_LIMIT = 4096
+
+
+def _source_name(name):
+    parts = name.split("/")
+    reserved = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {prefix + digit for prefix in ("COM", "LPT") for digit in "123456789\u00b9\u00b2\u00b3"}
+    return (name.startswith("scripts/") and "\\" not in name and
+            not any(part in {"", ".", ".."} or part.endswith((".", " "))
+                    or any(ord(char) < 32 or char in '<>:"|?*' for char in part)
+                    or part.split(".")[0].rstrip(" ").upper() in reserved for part in parts))
+
+
+def _source_inventory(raw):
+    if len(raw) > 4 * 1024 * 1024 or (raw and not raw.endswith(b"\0")):
+        raise ValueError("Controller Git inventory framing or size differs")
+    entries, names, total = [], set(), 0
+    for record in raw.split(b"\0")[:-1]:
+        fields, separator, path = record.partition(b"\t")
+        header = fields.split()
+        if (not separator or len(header) != 4 or header[0] not in {b"100644", b"100755"}
+                or header[1] != b"blob" or not re.fullmatch(rb"[0-9a-f]{40}", header[2])
+                or not re.fullmatch(rb"0|[1-9][0-9]*", header[3])):
+            raise ValueError("Controller Git source must contain regular, sized blobs")
+        name, size = path.decode("utf-8"), int(header[3])
+        if not _source_name(name) or name.casefold() in names:
+            raise ValueError("Controller Git inventory has unsafe or duplicate source paths")
+        names.add(name.casefold()); total += size
+        if size > SOURCE_FILE_LIMIT or total > SOURCE_TOTAL_LIMIT or len(entries) >= SOURCE_ENTRY_LIMIT:
+            raise ValueError("Controller Git source exceeds bounded payload limits")
+        entries.append({"path": name, "oid": header[2].decode("ascii"), "size": size})
+    return entries
+
+
+def _source_blob(entry, payload):
+    # Object framing corroborates exact tree membership; raw SHA256 remains the
+    # independent source/manifest/local-payload equality used by verification.
+    if (len(payload) != entry["size"] or hashlib.sha1(b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload).hexdigest() != entry["oid"]):
+        raise ValueError("Controller Git blob bytes differ from their committed tree object")
+    return payload
+
+
+def _batch_unsupported(error):
+    # This is the exact frozen read-only WSL bridge diagnostic. Permission,
+    # transport corruption, timeout, missing objects and malformed output never
+    # qualify for fallback merely because cat-file was the attempted command.
+    return (error.returncode == 1 and error.stderr == b"Cross-host Git bridge refuses mutations\n"
+            and not error.output)
+
+
+def _batch_source(common, entries):
+    command, environment = _source_command(common, "cat-file", "--batch")
+    request = b"".join((entry["oid"] + "\n").encode("ascii") for entry in entries)
+    # Spool native output so source verification has bounded RAM even if a
+    # broken read transport emits excess bytes. No cache/runtime file is made.
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        result = subprocess.run(command, input=request, stdout=output, stderr=errors,
+                                cwd=common, env=environment, timeout=30, check=False)
+        errors.seek(0); detail = errors.read(8192)
+        if result.returncode:
+            output.seek(0)
+            raise subprocess.CalledProcessError(result.returncode, command, output=output.read(1), stderr=detail)
+        length = output.tell()
+        if length > sum(entry["size"] + 128 for entry in entries):
+            raise ValueError("Controller Git batch output exceeds its inventory")
+        output.seek(0)
+        payloads = {}
+        for entry in entries:
+            expected = (entry["oid"] + " blob " + str(entry["size"]) + "\n").encode("ascii")
+            if output.readline(128) != expected:
+                raise ValueError("Controller Git batch header/object/type/size differs")
+            payload = output.read(entry["size"])
+            if len(payload) != entry["size"] or output.read(1) != b"\n":
+                raise ValueError("Controller Git batch payload is truncated or misframed")
+            payloads[entry["path"]] = _source_blob(entry, payload)
+        if output.read(1):
+            raise ValueError("Controller Git batch has unexpected trailing objects or bytes")
+        return payloads
+
+
+def source_files(common: Path, commit: str) -> dict:
+    """One exact inventory and framed raw-byte batch; explicit bridge fallback."""
+    if not COMMIT.fullmatch(commit):
+        raise ValueError("Controller source requires an exact commit identifier")
+    entries = _source_inventory(git_source(common, "ls-tree", "-r", "-z", "-l", "--full-tree", commit, "--", "scripts/"))
+    try:
+        return _batch_source(common, entries)
+    except subprocess.CalledProcessError as error:
+        if not _batch_unsupported(error):
+            raise
+        return {entry["path"]: _source_blob(entry, git_source(common, "show", commit + ":" + entry["path"])) for entry in entries}
 
 
 def common_directory(repo: Path) -> Path:
@@ -192,23 +292,19 @@ def verify_source(directory: Path, repo: Path, expected_commit=None) -> dict:
         raise ValueError("Invalid controller inventory")
     names = [item["path"] for item in entries]
     common = common_directory(Path(repo))
-    expected = git_source(common, "ls-tree", "-r", "--name-only", commit, "scripts/").decode().splitlines()
-    if "scripts/task_lifecycle.py" not in names or len(names) != len(set(names)) or sorted(names) != sorted(expected):
+    sources = source_files(common, commit)
+    if "scripts/task_lifecycle.py" not in names or len(names) != len(set(names)) or sorted(names) != sorted(sources):
         raise ValueError("Controller inventory differs from its source commit")
     for item in entries:
         name = item["path"]
         parts = name.split("/")
-        reserved = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {prefix + digit for prefix in ("COM", "LPT") for digit in "123456789\u00b9\u00b2\u00b3"}
-        if (not name.startswith("scripts/") or "\\" in name
-                or any(part in {"", ".", ".."} or part.endswith((".", " "))
-                       or any(ord(char) < 32 or char in '<>:"|?*' for char in part)
-                       or part.split(".")[0].rstrip(" ").upper() in reserved for part in parts)):
+        if not _source_name(name):
             raise ValueError("Unsafe controller source path")
         path = directory.joinpath(*parts)
         if (not path.is_file() or not path.resolve().is_relative_to(directory.resolve())
                 or any(redirected(parent) for parent in [path, *path.parents[:len(parts)]])):
             raise ValueError("Controller source is redirected")
-        source_hash = hashlib.sha256(git_source(common, "show", commit + ":" + name)).hexdigest()
+        source_hash = hashlib.sha256(sources[name]).hexdigest()
         if file_digest(path) != item.get("sha256") or source_hash != item.get("sha256"):
             raise ValueError("Controller integrity check failed; payload/manifest differs from committed source: " + name)
     return manifest
@@ -484,19 +580,19 @@ def require_mutation(store, token):
 
 
 def source_capability(common: Path, commit: str) -> int:
-    names = git_source(common, "ls-tree", "-r", "--name-only", commit, "scripts/").decode().splitlines()
-    if "scripts/controller_leases.py" not in names:
+    sources = source_files(common, commit)
+    if "scripts/controller_leases.py" not in sources:
         return 0
-    helper = ast.parse(git_source(common, "show", commit + ":scripts/controller_leases.py").decode("utf-8"))
+    helper = ast.parse(sources["scripts/controller_leases.py"].decode("utf-8"))
     values = [node.value.value for node in helper.body if isinstance(node, ast.Assign)
               and any(isinstance(target, ast.Name) and target.id == "CONTROLLER_LEASE_ABI" for target in node.targets)
               and isinstance(node.value, ast.Constant)]
     if values != [1]:
         raise ValueError("Unsupported controller source ABI")
     for entry in ENTRIES:
-        if "scripts/" + entry not in names:
+        if "scripts/" + entry not in sources:
             raise ValueError("Controller source is missing a controlled entry")
-        source = git_source(common, "show", commit + ":scripts/" + entry).decode("utf-8").replace("\r\n", "\n")
+        source = sources["scripts/" + entry].decode("utf-8").replace("\r\n", "\n")
         if source.count(EARLY_GUARD) != 1:
             raise ValueError("Controller source entry has no early execution admission: " + entry)
         prefix = ast.parse(source.split(EARLY_GUARD, 1)[0])

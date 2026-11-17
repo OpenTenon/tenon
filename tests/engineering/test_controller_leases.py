@@ -1393,6 +1393,117 @@ with FileLease(store.root/'locks/entry-install.lock'):
         self.assertIn("bound-commit.txt", self.run_git("show", "--name-only", "HEAD").decode())
 
 
+class SourceBatchTests(ControllerFixture):
+    def test_real_batch_preserves_raw_bytes_exact_inventory_and_ignores_replace_refs(self):
+        self.version('batch-source', full=True)
+        path = self.root/'scripts/raw-bytes.dat'
+        path.write_bytes(b'\0raw\r\nbytes\xff\n')
+        self.run_git('add', '--', 'scripts/raw-bytes.dat')
+        self.run_git('commit', '--quiet', '-m', 'binary raw source fixture')
+        target = self.run_git('rev-parse', 'HEAD').decode().strip()
+        names = self.run_git('ls-tree', '-r', '--name-only', target, 'scripts/').decode().splitlines()
+        expected = {name: self.run_git('show', target+':'+name) for name in names}
+        before = snapshot(self.store.root)
+        original_run, calls = subprocess.run, []
+        def observe(argv, *args, **kwargs):
+            if isinstance(argv, list):
+                calls.append(list(argv))
+            return original_run(argv, *args, **kwargs)
+        with mock.patch.object(leases.subprocess, 'run', side_effect=observe):
+            actual = leases.source_files(self.store.common, target)
+        self.assertEqual(actual, expected)
+        self.assertEqual(sum('cat-file' in argv for argv in calls), 1)
+        self.assertEqual(sum('show' in argv for argv in calls), 0)
+        self.assertEqual(snapshot(self.store.root), before)
+        oid = self.run_git('rev-parse', target+':scripts/raw-bytes.dat').decode().strip()
+        replacement = subprocess.check_output(['git', '-C', str(self.root), 'hash-object', '-w', '--stdin'], input=b'uncommitted replacement').decode().strip()
+        self.run_git('replace', oid, replacement)
+        self.assertNotEqual(self.run_git('show', target+':scripts/raw-bytes.dat'), expected['scripts/raw-bytes.dat'])
+        self.assertEqual(leases.source_files(self.store.common, target), expected)
+
+    def test_inventory_rejects_unsafe_duplicate_nonblob_and_oversized_entries_before_batch(self):
+        oid = b'1'*40
+        def row(name=b'scripts/a.py', mode=b'100644', kind=b'blob', size=b'1'):
+            return mode+b' '+kind+b' '+oid+b' '+size+b'\t'+name+b'\0'
+        bad = [row()[:-1], row()+b'\0', row()+row(), row()+row(b'scripts/A.py'),
+               row(b'scripts/../outside.py'), row(b'scripts/a\\b.py'), row(b'scripts/COM\xc2\xb9.txt'),
+               row(mode=b'120000'), row(mode=b'160000', kind=b'commit'), row(kind=b'tree'),
+               row(size=b'-'), row(size=b'01'), row(size=str(leases.SOURCE_FILE_LIMIT+1).encode()),
+               row().replace(oid, b'g'*40)]
+        for raw in bad:
+            with self.subTest(raw=raw), mock.patch.object(leases, 'git_source', return_value=raw), \
+                    mock.patch.object(leases, '_batch_source') as batch, self.assertRaises(ValueError):
+                leases.source_files(self.store.common, '1'*40)
+            batch.assert_not_called()
+        with mock.patch.object(leases, 'SOURCE_ENTRY_LIMIT', 1), self.assertRaises(ValueError):
+            leases._source_inventory(row()+row(b'scripts/b.py'))
+        with mock.patch.object(leases, 'SOURCE_TOTAL_LIMIT', 1), self.assertRaises(ValueError):
+            leases._source_inventory(row()+row(b'scripts/b.py'))
+
+    def test_batch_framing_rejects_truncation_wrong_objects_type_size_payload_and_extra_bytes(self):
+        payload = b'raw\0\r\nbytes'
+        oid = hashlib.sha1(b'blob '+str(len(payload)).encode()+b'\0'+payload).hexdigest()
+        entries = [{'path':'scripts/a.py', 'oid':oid, 'size':len(payload)}]
+        header = (oid+' blob '+str(len(payload))+'\n').encode()
+        valid = header+payload+b'\n'
+        responses = [b'', (oid+' missing\n').encode(), valid[:-1], valid[:-3],
+                     valid.replace(oid.encode(), b'f'*40, 1), valid.replace(b' blob ', b' tree ', 1),
+                     header.replace(str(len(payload)).encode()+b'\n', b'999999999\n')+payload+b'\n',
+                     header+b'x'*len(payload)+b'\n', valid+b'extra', valid+valid]
+        for raw in responses:
+            def response(command, **kwargs):
+                kwargs['stdout'].write(raw); kwargs['stdout'].flush()
+                return subprocess.CompletedProcess(command, 0)
+            with self.subTest(raw=raw), mock.patch.object(leases.subprocess, 'run', side_effect=response), self.assertRaises(ValueError):
+                leases._batch_source(self.store.common, entries)
+        def response(command, **kwargs):
+            kwargs['stdout'].write(valid); kwargs['stdout'].flush()
+            return subprocess.CompletedProcess(command, 0)
+        with mock.patch.object(leases.subprocess, 'run', side_effect=response):
+            self.assertEqual(leases._batch_source(self.store.common, entries), {'scripts/a.py':payload})
+
+    def test_only_exact_unsupported_bridge_falls_back_to_complete_sha_checked_git_show(self):
+        target = self.version('fallback-source')
+        expected = leases.source_files(self.store.common, target)
+        unsupported = subprocess.CalledProcessError(1, ['git','cat-file','--batch'], output=b'', stderr=b'Cross-host Git bridge refuses mutations\n')
+        original, calls = leases.git_source, []
+        def read(common, *args):
+            calls.append(args)
+            return original(common, *args)
+        with mock.patch.object(leases, '_batch_source', side_effect=unsupported), mock.patch.object(leases, 'git_source', side_effect=read):
+            self.assertEqual(leases.source_files(self.store.common, target), expected)
+        self.assertEqual(sum(args[0]=='show' for args in calls), len(expected))
+        bad = [subprocess.CalledProcessError(128, unsupported.cmd, stderr=unsupported.stderr),
+               subprocess.CalledProcessError(1, unsupported.cmd, stderr=b'permission denied\n'),
+               subprocess.CalledProcessError(1, unsupported.cmd, stderr=b'EOF\n'),
+               subprocess.CalledProcessError(1, unsupported.cmd, output=b'x', stderr=unsupported.stderr),
+               subprocess.TimeoutExpired(unsupported.cmd, 30), ValueError('malformed batch framing')]
+        for error in bad:
+            calls.clear()
+            with self.subTest(error=error), mock.patch.object(leases, '_batch_source', side_effect=error), \
+                    mock.patch.object(leases, 'git_source', side_effect=read), self.assertRaises(type(error)):
+                leases.source_files(self.store.common, target)
+            self.assertFalse(any(args[0]=='show' for args in calls))
+        def corrupt(common, *args):
+            raw = original(common, *args)
+            return b'x'*len(raw) if args[0]=='show' else raw
+        with mock.patch.object(leases, '_batch_source', side_effect=unsupported), \
+                mock.patch.object(leases, 'git_source', side_effect=corrupt), self.assertRaises(ValueError):
+            leases.source_files(self.store.common, target)
+
+    def test_payload_and_manifest_agreement_cannot_replace_committed_raw_sha256(self):
+        target = self.version('three-way-integrity')
+        directory = self.deployed(target)
+        path = directory/'scripts/task_lifecycle.py'
+        path.write_bytes(path.read_bytes()+b'\n# uncommitted cache change\n')
+        manifest = json.loads((directory/'controller.json').read_text(encoding='utf-8'))
+        item = next(item for item in manifest['files'] if item['path']=='scripts/task_lifecycle.py')
+        item['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+        write_json(directory/'controller.json', manifest)
+        with self.assertRaisesRegex(ValueError, 'committed source'):
+            leases.verify_source(directory, self.root, target)
+
+
 class InstallationTransactionTests(ControllerFixture):
     def test_process_exit_pending_is_readonly_then_recovers_from_verified_bundle(self):
         entry = self.legacy_owned(); before = self.entry_tuple()

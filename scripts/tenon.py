@@ -574,7 +574,7 @@ try:
     for key in tuple(environment):
         if key in {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM"} or key.startswith("GIT_CONFIG_KEY_") or key.startswith("GIT_CONFIG_VALUE_"):
             environment.pop(key, None)
-    payload = subprocess.check_output(["git", "--no-optional-locks", "--git-dir", str(common), "show", config["commit"] + ":scripts/controller_leases.py"],
+    payload = subprocess.check_output(["git", "--no-optional-locks", "--no-replace-objects", "--git-dir", str(common), "show", config["commit"] + ":scripts/controller_leases.py"],
         cwd=common, env=environment, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
     module = types.ModuleType("controller_leases")
     module.__file__ = str(Path(config["controller"]) / "scripts/controller_leases.py")

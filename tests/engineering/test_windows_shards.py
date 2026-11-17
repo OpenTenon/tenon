@@ -217,8 +217,18 @@ class ShardRunnerTests(ShardFixture):
 
 
 class ShardGateTests(ShardFixture):
+    def unallocated_module(self, label, index=None):
+        for number in range(10000):
+            name="test_unallocated_fixture_"+label+"_"+str(number)
+            if name not in self.allocation["module_assignments"] and (index is None or runner.module_owner(name,self.allocation)[0]==index):
+                return name
+        raise AssertionError("Cannot allocate a synthetic future-module fixture")
+
     def trusted_inventory(self):
-        identities=sorted([*ci_gate.CRITICAL_WINDOWS_CASES,"test_health_drills.Drills.test_future"])
+        # Keep both shortened positive-control shards nonempty independently of
+        # where the measured manifest places the real native-case modules.
+        identities=sorted([*ci_gate.CRITICAL_WINDOWS_CASES,self.unallocated_module("future")+".Case.test_future",
+            *(self.unallocated_module("anchor"+str(index),index)+".Case.test_retained" for index in (0,1))])
         return [{"id":identity,"module":identity.split(".")[0],"class":identity.rsplit(".",1)[0]} for identity in identities]
 
     def reports(self):
@@ -246,9 +256,10 @@ class ShardGateTests(ShardFixture):
     def test_complete_typed_current_windows_union_and_future_module_are_accepted(self):
         reports,expected,allocation,sha=self.reports()
         self.assertEqual(ci_gate.check_windows_reports(reports,expected,allocation,sha,self.trusted_inventory()),[])
-        self.assertNotIn("test_health_drills",allocation["module_assignments"])
+        future_module=self.unallocated_module("future")
+        self.assertNotIn(future_module,allocation["module_assignments"])
         for report in reports:
-            future=next(row for row in report["shard"]["assignments"] if row["module"]=="test_health_drills")
+            future=next(row for row in report["shard"]["assignments"] if row["module"]==future_module)
             self.assertEqual(future["source"],"stable-hash")
 
     def test_missing_stale_duplicate_foreign_partial_and_hidden_failure_inputs_fail_closed(self):
@@ -292,7 +303,7 @@ class ShardGateTests(ShardFixture):
     def test_both_consistent_reports_omitting_the_same_case_fail_independent_inventory(self):
         reports,expected,allocation,sha=self.reports()
         trusted=self.trusted_inventory()
-        shortened=[row for row in trusted if row["module"]!="test_health_drills"]
+        shortened=[row for row in trusted if row["module"]!=self.unallocated_module("future")]
         retained={row["id"] for row in shortened}
         for report in reports:
             report["discovery"]["case_ids"]=[row["id"] for row in shortened]
@@ -306,7 +317,8 @@ class ShardGateTests(ShardFixture):
             report["tests_run"]=len(report["cases"])
         # Both shortened reports are otherwise self-consistent, including native PASS.
         self.assertEqual(ci_gate.check_windows_reports(reports,expected,allocation,sha,shortened),[])
-        self.assertTrue(ci_gate.check_windows_reports(reports,expected,allocation,sha,trusted))
+        errors=ci_gate.check_windows_reports(reports,expected,allocation,sha,trusted)
+        self.assertTrue(any("independent current-checkout inventory" in error for error in errors),errors)
 
     def test_empty_duplicate_or_malformed_trusted_inventory_fails_closed(self):
         reports,expected,allocation,sha=self.reports()
