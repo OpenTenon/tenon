@@ -7,6 +7,7 @@ description: Prepare a requested Tenon dev-to-main release readiness review from
 
 Input: the requested dev candidate, current main and available verification/PDK evidence. Refresh refs when access allows and keep their exact identities.
 
+- Use `git tenon doctor --full` for engineering readiness; its result does not qualify physical signoff.
 - Refresh the read-only revision information when possible and identify the exact `dev` candidate and current `main`. State when refs could not be refreshed.
 - Use a clean candidate checkout and run `make verify`; include relevant external-PDK evidence for affected adapters.
 - Run `python3 scripts/engineering.py release-check --evidence <summary.json>`; multiple evidence arguments can combine the CI verification groups.

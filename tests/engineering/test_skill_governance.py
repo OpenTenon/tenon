@@ -38,7 +38,7 @@ class SkillContractTests(unittest.TestCase):
         baseline = json.loads((ROOT/"tests/skill-evals/cases.json").read_text(encoding="utf-8"))["cases"]
         self.assertEqual(len(baseline),10)
         cases = skill_eval.load_cases(ROOT)
-        self.assertEqual(len(cases),18)
+        self.assertEqual(len(cases),23)
         self.assertTrue({case["id"] for case in baseline}.issubset({case["id"] for case in cases}))
 
     def test_dead_make_and_python_subcommands_are_rejected(self):
@@ -50,6 +50,40 @@ class SkillContractTests(unittest.TestCase):
     def test_literal_loop_declared_subcommand_is_a_valid_interface(self):
         self.edit_skill("\nUse `python scripts/engineering.py verify --group tools`.\n")
         self.assertEqual(repo_policy.check_skills(self.root),[])
+
+    def test_stable_commands_validate_nested_scope_choices_and_arity_without_execution(self):
+        valid = ["git tenon doctor --full", "git tenon task context --id fixture",
+                 "git tenon task note --id fixture --event-id r1 --kind rework --reason observed",
+                 "git tenon task attest --id fixture --event-id a1 --human-interventions 0 --rework 1 --evidence-digest digest --coverage-start tracking-start --reason observed",
+                 "git tenon task handoff --id fixture --evidence result.json",
+                 "git tenon maintenance restore-check --id fixture", "git tenon maintenance drill"]
+        self.edit_skill("\n" + "\n".join("Use "+chr(96)+value+chr(96)+"." for value in valid))
+        with mock.patch.object(subprocess, "run", side_effect=AssertionError("Never run interfaces")), mock.patch.object(subprocess, "check_output", side_effect=AssertionError("Never import/run entries")):
+            self.assertEqual(repo_policy.check_skills(self.root), [])
+        for command in ("git tenon task absent --id fixture", "git tenon doctor --event-id x",
+                        "git tenon task context --full", "git tenon task note --kind wrong",
+                        "git tenon task context --id", "git tenon maintenance drill --force",
+                        "git tenon task lease --state invalid"):
+            with self.subTest(command=command):
+                self.edit_skill("\nUse "+chr(96)+command+chr(96)+".")
+                self.assertTrue(any("invalid stable command" in error for error in repo_policy.check_skills(self.root)))
+
+    def test_sorted_static_choices_are_checked_and_runtime_choices_fail_closed(self):
+        self.edit_skill("\nUse `python3 scripts/skill_offline.py --fixture-worker owned --scenario partial-evidence`.\n")
+        self.assertEqual(repo_policy.check_skills(self.root), [])
+        self.edit_skill("\nUse `python3 scripts/skill_offline.py --fixture-worker owned --scenario definitely-invalid`.\n")
+        self.assertTrue(any("invalid choice" in error for error in repo_policy.check_skills(self.root)))
+        entry=self.root/"scripts/runtime_choices.py"
+        entry.write_text("raise AssertionError('Never execute/import this file')\nimport argparse\n"
+                         "def main():\n    parser=argparse.ArgumentParser()\n"
+                         "    parser.add_argument('--mode',choices=runtime_factory())\n",encoding="utf-8")
+        self.edit_skill("\nUse `python3 scripts/runtime_choices.py --mode accepted-by-guess`.\n")
+        errors=repo_policy.check_skills(self.root)
+        self.assertTrue(any("accepted-by-guess" in error and "invalid choice" in error for error in errors))
+
+    def test_python_nested_and_later_options_are_checked(self):
+        self.edit_skill("\nUse "+chr(96)+"python scripts/engineering.py verify --group typo"+chr(96)+".")
+        self.assertTrue(any("unknown Python command/option" in error for error in repo_policy.check_skills(self.root)))
 
     def test_missing_anchor_and_escaping_reference_are_rejected(self):
         self.edit_skill("\n[bad](../../../docs/engineering/WORKFLOW.md#missing-section)\n[outside](../../../../../../outside.md)\n")
@@ -139,7 +173,7 @@ class BudgetTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name=="nt","Windows shim discovery contract")
     def test_windows_batch_shim_is_not_executed_when_no_safe_node_entry_exists(self):
-        with mock.patch.object(shutil,"which",side_effect=lambda name: r"C:\missing\codex.CMD" if name=="codex" else None):
+        with mock.patch.object(shutil,"which",side_effect=lambda name: r"C:\missing\codex.CMD" if name=="codex" else None), mock.patch.dict(os.environ, {"LOCALAPPDATA":r"C:\missing\tenon-fixture"}):
             with self.assertRaises(ValueError):
                 skill_eval.codex_command()
 
@@ -184,33 +218,14 @@ class EffectiveConfigurationTests(unittest.TestCase):
                 skill_eval.configured_mcp_overrides(ROOT,["fixture-cli"])
             query.assert_called_once()
 
-    @unittest.skipUnless(shutil.which("codex"),"Installed CLI required for model-free configuration-layer integration")
     def test_installed_cli_resolves_base_profile_and_trusted_project_without_model_calls(self):
-        try:
-            cli = skill_eval.codex_command()
-            skill_eval.codex_version(cli)
-        except ValueError as error:
-            self.skipTest("Existing CLI prerequisite is unavailable: "+str(error))
-        with tempfile.TemporaryDirectory(prefix="tenon-config-layer-") as temporary:
-            base = Path(temporary)
-            config, fixture = base/"config",base/"fixture"
-            config.mkdir(); fixture.mkdir(); (fixture/".codex").mkdir()
-            subprocess.run(["git","init","--quiet",str(fixture)],check=True)
-            marker = base/"unexpected-server-start"
-            command = "command="+json.dumps(sys.executable)+"\nargs="+json.dumps(["-c","from pathlib import Path; Path("+repr(str(marker))+").write_text('started')"])+"\n"
-            files = {config/"config.toml":'model_provider="fixture_provider"\n[model_providers.fixture_provider]\nname="fixture"\nbase_url="https://invalid.example.invalid/v1"\nwire_api="responses"\n[mcp_servers.base]\n'+command+'[projects.'+json.dumps(str(fixture))+']\ntrust_level="trusted"\n',
-                     config/"layer.config.toml":"[mcp_servers.profile]\n"+command,
-                     fixture/".codex/config.toml":"[mcp_servers.project]\n"+command}
-            for path,content in files.items():
-                path.write_text(content,encoding="utf-8")
-            before = {path:path.read_bytes() for path in files}
-            with mock.patch.dict(os.environ,{"CODEX_HOME":str(config)}):
-                overrides = skill_eval.configured_mcp_overrides(fixture,cli,"layer")
-            self.assertEqual({value for value in overrides if value!="-c"},
-                {'mcp_servers.base.enabled=false','mcp_servers.profile.enabled=false','mcp_servers.project.enabled=false'})
-            self.assertEqual(before,{path:path.read_bytes() for path in files})
-            self.assertFalse(marker.exists())
-            self.assertFalse((fixture/"auth.json").exists())
+        from skill_offline import configuration_check
+        result = configuration_check()
+        if result["status"] == "NOT_RUN":
+            self.skipTest(result["diagnostic"])
+        self.assertEqual(result["status"], "PASS", result)
+        self.assertEqual(result["model_calls"], 0)
+        self.assertTrue(all(result["assertions"].values()))
 
 
 class ImplementationFixtureTests(RepositoryFixture):
