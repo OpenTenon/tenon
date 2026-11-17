@@ -1,6 +1,45 @@
 #!/usr/bin/env python3
 """Private archive recovery exercises and conservative, version-aware engineering upkeep."""
 from __future__ import annotations
+
+# Controller execution ABI 1: keep before all local/business imports.
+import os as _tenon_os
+import sys as _tenon_sys
+from pathlib import Path as _tenon_Path
+
+def _tenon_cache_entry():
+    entry = _tenon_Path(__file__).absolute()
+    version = entry.parent.parent
+    if (entry.parent.name != "scripts" or version.parent.name != "controllers"
+            or version.parent.parent.name != "tenon" or len(version.name) != 40
+            or any(char not in "0123456789abcdef" for char in version.name)):
+        return
+    module = _tenon_sys.modules.get("controller_leases")
+    if module is not None and module.active_for(entry):
+        return
+    if __name__ != "__main__":
+        raise RuntimeError("Owned controller imports require an admitted execution; use the installed entry")
+    _tenon_sys.dont_write_bytecode = True
+    _tenon_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+    launcher = version.parent.parent / "bin/tenon.py"
+    if not launcher.is_file():
+        raise RuntimeError("Controller admission is unavailable; run the qualified source installer explicitly")
+    import json as _tenon_boot_json
+    configuration = _tenon_boot_json.loads((launcher.parent / "installation.json").read_bytes())
+    if configuration.get("controller_lease_abi") != 1:
+        raise RuntimeError("Installed launcher has no execution admission ABI; run the qualified new source installer explicitly after dev is green")
+    import runpy as _tenon_runpy
+    _tenon_sys.argv = [str(launcher), "_controller", str(entry), *_tenon_sys.argv[1:]]
+    _tenon_runpy.run_path(str(launcher), run_name="__main__")
+    raise SystemExit(0)
+
+try:
+    _tenon_cache_entry()
+except (OSError, ValueError, RuntimeError) as _tenon_error:
+    import json as _tenon_json
+    print(_tenon_json.dumps({"status": "BLOCKED", "reason": str(_tenon_error)}))
+    raise SystemExit(2)
+
 import argparse
 import hashlib
 import json
@@ -13,6 +52,7 @@ import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from engineering_common import safe_exception, safe_error_payload
 from engineering_common import ROOT, digest, git, run_id, utc_now, write_json
 from task_archive import safe_relative, verify_task_archive, verify_controller_source as verify_controller
 from task_store import FileLease, TaskStore, process_alive
@@ -22,7 +62,10 @@ def unclassified_payloads(directory: Path, manifest: dict) -> list[str]:
     known = {Path(item["path"]) for item in manifest["files"]} | {Path("controller.json")}
     parents = {parent for path in known for parent in path.parents}
     caches = {path.parent / "__pycache__" for path in known if path.suffix == ".py"}
-    unknown = ["controller.json:unclassified-metadata"] if set(manifest) - {"schema_version", "commit", "files"} else []
+    allowed = {"schema_version", "commit", "files"}
+    if manifest.get("controller_lease_abi") == 1:
+        allowed.add("controller_lease_abi")
+    unknown = ["controller.json:unclassified-metadata"] if set(manifest) - allowed else []
     for parent, directories, files in os.walk(directory, followlinks=False):
         for name in [*directories, *files]:
             path = Path(parent) / name
@@ -84,6 +127,7 @@ def registered_host(store: TaskStore) -> str | None:
 
 def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
     retained = set()
+    uncertain = False
     executing = Path(__file__).resolve().parents[1]
     if executing.parent == (store.root / "controllers").resolve() and re.fullmatch(r"[0-9a-f]{40}", executing.name):
         retained.add(executing.name)
@@ -92,14 +136,20 @@ def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
         value = json.loads(installation.read_text(encoding="utf-8"))
         if value.get("repo_id") != store.repo_id:
             raise ValueError("Installed entry belongs to another repository")
+        if value.get("schema_version") != 1 or any(value.get(key) is not None and not re.fullmatch(r"[0-9a-f]{40}", str(value[key])) for key in ("commit", "previous_commit")):
+            uncertain = True
         retained.update(item for item in (value.get("commit"), value.get("previous_commit")) if item)
     for task in store.all():
         if task.get("status") != "CLEANED" and task.get("controller"):
-            pieces = str(task["controller"]).replace("\\", "/").split("/")
-            retained.update(item for item in pieces if re.fullmatch(r"[0-9a-f]{40}", item))
+            path = Path(task["controller"]).resolve()
+            version = path.parent.parent
+            if path.parent.name != "scripts" or version.parent != (store.root / "controllers").resolve() or not re.fullmatch(r"[0-9a-f]{40}", version.name):
+                uncertain = True
+            else:
+                retained.add(version.name)
     heartbeat = store.root / "operations/worker-latest.json"
     foreign = registered_host(store) not in {None, os.name}
-    unknown_worker = foreign
+    unknown_worker = foreign or uncertain
     observed = json.loads(heartbeat.read_text(encoding="utf-8")) if heartbeat.exists() else {}
     lease_path = store.root / "locks/worker.lock"
     if lease_path.exists() and not foreign:
@@ -126,53 +176,86 @@ def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
     return retained, unknown_worker
 
 
-def controller_inventory(store: TaskStore) -> dict:
+def controller_inventory(store: TaskStore, *, exclusive_versions=None) -> dict:
+    from controller_leases import version_observation, redirected, registry_issues
+    exclusive_versions = exclusive_versions or {}
     retained, unknown_worker = retained_versions(store)
+    issues = registry_issues(store.root)
     values = []
-    for directory in sorted((store.root / "controllers").iterdir()) if (store.root / "controllers").exists() else []:
-        if not directory.is_dir() or directory.is_symlink() or not re.fullmatch(r"[0-9a-f]{40}", directory.name):
+    controllers = store.root / "controllers"
+    if os.path.lexists(controllers) and (redirected(controllers) or not controllers.is_dir()):
+        return {"versions": [{"path": str(controllers), "state": "UNKNOWN"}], "active_worker_identity_unknown": True,
+                "lease_registry_issues": ["Controller storage is redirected or unavailable"]}
+    for directory in sorted(controllers.iterdir()) if controllers.exists() else []:
+        if not directory.is_dir() or redirected(directory) or not re.fullmatch(r"[0-9a-f]{40}", directory.name):
             values.append({"path": str(directory), "state": "UNKNOWN"})
             continue
         try:
             manifest = verify_controller(directory, store.repo)
             unknown = unclassified_payloads(directory, manifest)
             recent = datetime.now(timezone.utc).timestamp() - directory.stat().st_mtime < 86400
+            lease = version_observation(store.root, directory, owned_exclusive=exclusive_versions.get(directory.name))
+            size = None if unknown else sum(path.stat().st_size for path in directory.rglob("*") if path.is_file() and not path.is_symlink())
             values.append({"path": str(directory), "commit": directory.name,
-                           "state": "UNCLASSIFIED" if unknown else "RETAINED" if directory.name in retained or unknown_worker or recent else "RECLAIMABLE",
-                           "unclassified": unknown})
+                           "state": "UNCLASSIFIED" if unknown else "UNKNOWN" if lease["state"] == "UNKNOWN" else
+                                    "RETAINED" if directory.name in retained or unknown_worker or recent or issues or lease.get("held") else "RECLAIMABLE",
+                           "unclassified": unknown, "lease": lease, "logical_bytes": size,
+                           "within_24h": recent, "referenced": directory.name in retained})
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
-            values.append({"path": str(directory), "state": "INVALID", "reason": str(error)})
-    return {"versions": values, "active_worker_identity_unknown": unknown_worker}
+            values.append({"path": str(directory), "state": "INVALID", "reason": safe_exception(error)})
+    return {"versions": values, "active_worker_identity_unknown": unknown_worker, "lease_registry_issues": issues}
 
 
 def prune_controllers(repo: Path, apply: bool = False) -> dict:
+    from controller_leases import ReadLock, common_directory, mutation_context, redirected, verify_version_lock
+    common = common_directory(repo)
+    if not (common / "tenon/repository.json").is_file():
+        return {"status": "BLOCKED", "mode": "apply" if apply else "read-only", "removed": [],
+                "reason": "Runtime identity is absent; controller inventory never initializes a repository"}
     store = TaskStore(repo)
     if not apply:
         return {"status": "PASS", "mode": "read-only", **controller_inventory(store), "removed": []}
     if registered_host(store) not in {None, os.name}:
         raise ValueError("Controller reclamation must run on the registered native host")
+    preflight = controller_inventory(store)
+    if not any(item.get("state") == "RECLAIMABLE" for item in preflight["versions"]):
+        return {"status": "PASS", "mode": "apply", **preflight, "removed": [], "logical_bytes_removed": 0,
+                "reason": "No qualified unreferenced controller is eligible; unknown material remains preserved"}
     removed = []
-    with FileLease(store.root / "locks/entry-install.lock"), FileLease(store.root / "locks/integration.lock"):
+    before = shutil.disk_usage(store.root).free
+    removed_bytes = 0
+    with mutation_context(store):
         inventory = controller_inventory(store)
         for item in inventory["versions"]:
             if item["state"] != "RECLAIMABLE" or not apply:
                 continue
             root = (store.root / "controllers").resolve()
             target = Path(item["path"])
-            if target.is_symlink() or target.resolve().parent != root or not root.is_relative_to(store.root.resolve()):
+            if redirected(root) or redirected(target) or target.resolve() != target or target.parent != root or not root.is_relative_to(store.root.resolve()):
                 raise ValueError("Controller deletion escaped its owned storage")
-            manifest = verify_controller(target, store.repo)
-            if unclassified_payloads(target, manifest):
-                raise ValueError("Controller gained unclassified files before reclamation")
-            # Never descend through links/junctions, even in disposable cached bytecode.
-            for parent, directories, files in os.walk(target, followlinks=False):
-                for name in [*directories, *files]:
-                    entry = Path(parent) / name
-                    if entry.is_symlink() or getattr(entry.lstat(), "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
-                        raise ValueError("Controller contains an unowned reparse/symlink entry")
-            shutil.rmtree(target)
-            removed.append(item["commit"])
-    return {"status": "PASS", "mode": "apply" if apply else "read-only", **inventory, "removed": removed}
+            with ReadLock(store.root / "controller-leases" / (item["commit"] + ".lock"), exclusive=True, timeout=0) as lease:
+                verify_version_lock(store.root, target, lease)
+                # Recompute references, age, registry and exact native ownership for each deletion.
+                fresh = controller_inventory(store, exclusive_versions={item["commit"]: lease})
+                selected = next((row for row in fresh["versions"] if row.get("commit") == item["commit"]), None)
+                if not selected or selected["state"] != "RECLAIMABLE":
+                    continue
+                manifest = verify_controller(target, store.repo)
+                if unclassified_payloads(target, manifest):
+                    raise ValueError("Controller gained unclassified files before reclamation")
+                for parent, directories, files in os.walk(target, followlinks=False):
+                    for name in [*directories, *files]:
+                        if redirected(Path(parent) / name):
+                            raise ValueError("Controller contains an unowned reparse/symlink entry")
+                if target.resolve().parent != root or redirected(target):
+                    raise ValueError("Controller changed before its exact removal")
+                shutil.rmtree(target)
+                removed.append(item["commit"])
+                removed_bytes += selected["logical_bytes"]
+    return {"status": "PASS", "mode": "apply", **inventory, "removed": removed,
+            "logical_bytes_removed": removed_bytes, "free_bytes_before": before,
+            "free_bytes_after": shutil.disk_usage(store.root).free,
+            "capacity_qualification": "Observed free space may include unrelated filesystem activity; archives are never reclaimed"}
 
 
 def audit(repo: Path, live: bool = True, include_source: bool = True) -> dict:
@@ -193,7 +276,7 @@ def audit(repo: Path, live: bool = True, include_source: bool = True) -> dict:
                 manifest = verify_task_archive(store, {**task, "archive": info})
                 result["checks"].append({"id": check_id, "status": "PASS", "files": len(manifest["files"])})
             except (OSError, ValueError, KeyError) as error:
-                result["checks"].append({"id": check_id, "status": "FAIL", "reason": str(error)})
+                result["checks"].append({"id": check_id, "status": "FAIL", "reason": safe_exception(error)})
     result["controllers"] = controller_inventory(store)
     states = {item["state"] for item in result["controllers"]["versions"]}
     result["checks"].append({"id": "controllers", "status": "FAIL" if "INVALID" in states else "BLOCKED" if "UNCLASSIFIED" in states else "PASS"})
@@ -208,7 +291,7 @@ def audit(repo: Path, live: bool = True, include_source: bool = True) -> dict:
                 from task_lifecycle import repository_name
                 result["checks"].append({"id": "published-rules", **audit_rules(repository_name(repo), repo, source)})
         except (OSError, ValueError, RuntimeError, ImportError, subprocess.SubprocessError) as error:
-            result["checks"].append({"id": "source-or-rules", "status": "BLOCKED", "reason": str(error)})
+            result["checks"].append({"id": "source-or-rules", "status": "BLOCKED", "reason": safe_exception(error)})
     usage = shutil.disk_usage(store.root)
     result["capacity"] = {"free_bytes": usage.free, "total_bytes": usage.total, "archive_retention": "indefinite"}
     statuses = {item["status"] for item in result["checks"]}
@@ -256,7 +339,7 @@ def run_due(repo: Path, force: bool = False) -> dict:
                 if result["status"] == "PASS":
                     result["status"] = "BLOCKED"
         except (OSError,ValueError,KeyError,subprocess.SubprocessError) as error:
-            result["checks"].append({"id":"metrics-observation","status":"BLOCKED","reason":str(error)})
+            result["checks"].append({"id":"metrics-observation","status":"BLOCKED","reason":safe_exception(error)})
             if result["status"] == "PASS":
                 result["status"] = "BLOCKED"
         tasks = [task for task in store.all() if task.get("archive")]
@@ -266,8 +349,24 @@ def run_due(repo: Path, force: bool = False) -> dict:
                 result["restore_exercise"] = restore_check(repo, tasks[cursor % len(tasks)]["task_id"])
                 cursor += 1
             except (OSError, ValueError, KeyError) as error:
-                result["checks"].append({"id": "restore-exercise", "status": "FAIL", "reason": str(error)})
+                result["checks"].append({"id": "restore-exercise", "status": "FAIL", "reason": safe_exception(error)})
                 result["status"] = "FAIL"
+        queue_idle = True
+        for path in (store.root / "queue").glob("*.json"):
+            try:
+                value = json.loads(path.read_bytes())
+                if value.get("schema_version") != 1 or value.get("repo_id") != store.repo_id or value.get("state") != "DONE":
+                    queue_idle = False
+            except (OSError, ValueError, AttributeError):
+                queue_idle = False
+        if result["status"] == "PASS" and queue_idle:
+            try:
+                result["controller_reclamation"] = prune_controllers(repo, apply=True)
+            except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+                result["controller_reclamation"] = {"status": "BLOCKED", "reason": safe_exception(error)}
+                result["status"] = "BLOCKED"
+        else:
+            result["controller_reclamation"] = {"status": "NOT_RUN", "reason": "Maintenance audit is not passing or the real queue is not idle"}
         write_json(Path(result["report"]), result)
         write_json(Path(result["work_items"]), proposed_work_items(result))
         delay = timedelta(days=30) if result["status"] == "PASS" else timedelta(days=1)
@@ -277,7 +376,7 @@ def run_due(repo: Path, force: bool = False) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--repo", type=Path, default=ROOT)
     commands = parser.add_subparsers(dest="command", required=True)
     check = commands.add_parser("audit")
@@ -303,7 +402,7 @@ def main():
         else:
             value = run_due(args.repo.resolve(), args.force)
     except (OSError, ValueError, KeyError, RuntimeError) as error:
-        value = {"status": "BLOCKED", "reason": str(error)}
+        value = {"status": "BLOCKED", "reason": safe_exception(error)}
     print(json.dumps(value, indent=2))
     return 0 if value["status"] in {"PASS", "NOT_DUE"} else 2
 

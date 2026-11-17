@@ -142,7 +142,7 @@ def safe_relative(name: str) -> Path:
     posix, windows = PurePosixPath(name), PureWindowsPath(name)
     parts = name.split("/")
     reserved = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {
-        prefix + digit for prefix in ("COM", "LPT") for digit in "123456789¹²³"}
+        prefix + digit for prefix in ("COM", "LPT") for digit in "123456789\u00b9\u00b2\u00b3"}
     if (not name or "\\" in name or posix.is_absolute() or windows.is_absolute() or windows.drive
             or any(not part or part in {".", ".."} or part.endswith((".", " "))
                    or any(ord(char) < 32 or char in '<>:"|?*' for char in part)
@@ -152,24 +152,8 @@ def safe_relative(name: str) -> Path:
 
 
 def verify_controller_source(directory: Path, repo: Path, expected_commit: str | None = None) -> dict:
-    manifest = json.loads((directory / "controller.json").read_text(encoding="utf-8"))
-    commit = expected_commit or directory.name
-    if (manifest.get("schema_version") != 1 or manifest.get("commit") != commit
-            or directory.name != commit or not re.fullmatch(r"[0-9a-f]{40}", commit)):
-        raise ValueError("Controller identity/version differs")
-    entries = manifest.get("files", [])
-    if not isinstance(entries, list) or any(not isinstance(item, dict) or not isinstance(item.get("path"), str) for item in entries):
-        raise ValueError("Invalid controller inventory")
-    names = [item["path"] for item in entries]
-    expected = git(repo,"ls-tree","-r","--name-only",commit,"scripts/").decode().splitlines()
-    if "scripts/task_lifecycle.py" not in names or len(names) != len(set(names)) or sorted(names) != sorted(expected):
-        raise ValueError("Controller inventory differs from its source commit")
-    for item in entries:
-        path = (directory / safe_relative(item["path"])).resolve()
-        source_hash = hashlib.sha256(git(repo,"show",commit+":"+item["path"])).hexdigest()
-        if not path.is_relative_to(directory.resolve()) or digest(path) != item.get("sha256") or source_hash != item.get("sha256"):
-            raise ValueError("Controller payload/manifest differs from committed source: " + item["path"])
-    return manifest
+    from controller_leases import verify_source
+    return verify_source(directory, repo, expected_commit)
 
 
 def verify_archive(path: Path, expected_sha: str | None = None) -> dict:
@@ -297,6 +281,14 @@ def archive_task(store: TaskStore, task: dict) -> dict:
 
 
 def deploy_controller(store: TaskStore, commit: str) -> Path:
+    from controller_leases import mutation_context, prepare_version
+    with mutation_context(store, initialize=True) as admission:
+        controller = _deploy_controller_payload(store, commit)
+        prepare_version(store, controller.parent.parent, admission)
+        return controller
+
+
+def _deploy_controller_payload(store: TaskStore, commit: str) -> Path:
     directory = store.root/"controllers"/commit
     manifest_path = directory/"controller.json"
     if manifest_path.exists():

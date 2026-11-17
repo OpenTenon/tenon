@@ -12,6 +12,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from controller_leases import safe_diagnostic, safe_exception, safe_error_payload
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = 1

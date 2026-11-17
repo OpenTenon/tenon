@@ -2,7 +2,47 @@
 """Source-pinned engineering entry; task workspaces are disposable, this entry is not."""
 from __future__ import annotations
 
+# Controller execution ABI 1: keep before all local/business imports.
+import os as _tenon_os
+import sys as _tenon_sys
+from pathlib import Path as _tenon_Path
+
+def _tenon_cache_entry():
+    entry = _tenon_Path(__file__).absolute()
+    version = entry.parent.parent
+    if (entry.parent.name != "scripts" or version.parent.name != "controllers"
+            or version.parent.parent.name != "tenon" or len(version.name) != 40
+            or any(char not in "0123456789abcdef" for char in version.name)):
+        return
+    module = _tenon_sys.modules.get("controller_leases")
+    if module is not None and module.active_for(entry):
+        return
+    if __name__ != "__main__":
+        raise RuntimeError("Owned controller imports require an admitted execution; use the installed entry")
+    _tenon_sys.dont_write_bytecode = True
+    _tenon_os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+    launcher = version.parent.parent / "bin/tenon.py"
+    if not launcher.is_file():
+        raise RuntimeError("Controller admission is unavailable; run the qualified source installer explicitly")
+    import json as _tenon_boot_json
+    configuration = _tenon_boot_json.loads((launcher.parent / "installation.json").read_bytes())
+    if configuration.get("controller_lease_abi") != 1:
+        raise RuntimeError("Installed launcher has no execution admission ABI; run the qualified new source installer explicitly after dev is green")
+    import runpy as _tenon_runpy
+    _tenon_sys.argv = [str(launcher), "_controller", str(entry), *_tenon_sys.argv[1:]]
+    _tenon_runpy.run_path(str(launcher), run_name="__main__")
+    raise SystemExit(0)
+
+try:
+    _tenon_cache_entry()
+except (OSError, ValueError, RuntimeError) as _tenon_error:
+    import json as _tenon_json
+    print(_tenon_json.dumps({"status": "BLOCKED", "reason": str(_tenon_error)}))
+    raise SystemExit(2)
+
+
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -11,11 +51,14 @@ import shutil
 import subprocess
 import sys
 import shlex
+import stat
+import uuid
 from pathlib import Path
 
 from engineering_common import ROOT, git, source_state, utc_now, write_json
 from task_archive import deploy_controller, worktrees
 from task_lifecycle import GitHub, ci_green
+from controller_leases import integration_scope
 from task_store import FileLease, TaskStore, identifier
 
 
@@ -180,13 +223,292 @@ def install_git_alias(repo: Path, launcher: Path, previous: dict | None, request
         return owned,"OWNED_RETAINED" if owned else "NOT_REQUESTED"
     if effective and (not owned or any(item!=owned["value"] for item in effective)):
         return owned,"PRESERVED_EXISTING"
-    command = "!f() { exec "+shlex.quote(Path(sys.executable).as_posix())+" "+shlex.quote(launcher.as_posix())+' "$@"; }; f'
+    command = "!f() { exec "+shlex.quote(Path(sys.executable).as_posix())+" -B "+shlex.quote(launcher.as_posix())+' "$@"; }; f'
     if local != [command]:
         subprocess.run(["git","-C",str(repo),"config","--local","alias.tenon",command],check=True,
                        stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     if values(True) != [command]:
         raise ValueError("Repository alias installation was not confirmed")
     return {"scope":"local","key":"alias.tenon","value":command},"INSTALLED"
+
+
+def _alias_values(repo: Path, local=True):
+    result = subprocess.run(["git", "-C", str(repo), "config", *(["--local"] if local else []),
+        "--null", "--get-all", "alias.tenon"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode not in {0, 1}:
+        raise ValueError("Cannot inspect repository Git alias")
+    return [part.decode("utf-8") for part in result.stdout.split(b"\0") if part]
+
+
+def _set_alias_values(repo: Path, values):
+    if not isinstance(values, list) or len(values) > 1 or any(not isinstance(value, str) for value in values):
+        raise ValueError("Owned local Git alias requires zero or one value")
+    # Git atomically commits one config update. Both publication and recovery
+    # must avoid an observable unset-before-add state owned by neither tuple.
+    operation = ["--replace-all", "alias.tenon", values[0]] if values else ["--unset-all", "alias.tenon"]
+    result = subprocess.run(["git", "-C", str(repo), "config", "--local", *operation],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode != 0 and not (not values and result.returncode == 5):
+        raise subprocess.CalledProcessError(result.returncode, result.args, output=result.stdout, stderr=result.stderr)
+    if _alias_values(repo) != values:
+        raise ValueError("Owned local Git alias update was not confirmed")
+
+
+def _alias_publication(repo, launcher, previous, requested):
+    local, effective = _alias_values(repo), _alias_values(repo, False)
+    old = (previous or {}).get("git_alias")
+    owned = old if (isinstance(old, dict) and old.get("scope") == "local" and old.get("key") == "alias.tenon"
+        and local == [old.get("value")] and effective and effective[-1] == old.get("value")) else None
+    descriptor, status, after = owned, "OWNED_RETAINED" if owned else "NOT_REQUESTED", local
+    if requested:
+        if effective and (not owned or any(value != owned["value"] for value in effective)):
+            status = "PRESERVED_EXISTING"
+        else:
+            command = "!f() { exec " + shlex.quote(Path(sys.executable).as_posix()) + " -B " + shlex.quote(launcher.as_posix()) + ' "$@"; }; f'
+            descriptor, status, after = {"scope": "local", "key": "alias.tenon", "value": command}, "INSTALLED", [command]
+    return descriptor, status, {"changed": local != after, "before": local if local != after else None,
+        "after": after if local != after else None,
+        "unchanged_sha256": hashlib.sha256(json.dumps(local, ensure_ascii=False).encode("utf-8")).hexdigest()}
+
+
+_ENTRY_FILES = ("tenon.py", "tenon.cmd", "installation.json")
+_LEGACY_LAUNCHER_SHA256 = "9fa9889ef719416c160c56cc4b9fc2c275e0acf218587ba906af53ac83ee3a4c"
+
+
+def _entry_snapshot(path):
+    from controller_leases import redirected
+    if not os.path.lexists(path):
+        return {"present": False}
+    if redirected(path) or not path.is_file() or path.stat().st_size > 4 * 1024 * 1024:
+        raise ValueError("Installation entry is unknown, redirected or oversized: " + str(path))
+    raw, info = path.read_bytes(), path.stat()
+    return {"present": True, "data": base64.b64encode(raw).decode("ascii"), "sha256": hashlib.sha256(raw).hexdigest(),
+            "mode": stat.S_IMODE(info.st_mode), "atime_ns": info.st_atime_ns, "mtime_ns": info.st_mtime_ns,
+            "attributes": getattr(info, "st_file_attributes", None)}
+
+
+def _entry_bytes(value):
+    if not value.get("present"):
+        return None
+    raw = base64.b64decode(value["data"], validate=True)
+    if len(raw) > 4 * 1024 * 1024 or hashlib.sha256(raw).hexdigest() != value["sha256"]:
+        raise ValueError("Installation transaction backup integrity differs")
+    return raw
+
+
+def _install_record(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        with temporary.open("xb") as output:
+            output.write((json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
+            output.flush(); os.fsync(output.fileno())
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _replace_entry_bytes(path, raw):
+    temporary = path.with_name(".tenon-install-" + uuid.uuid4().hex + ".tmp")
+    try:
+        with temporary.open("xb") as output:
+            output.write(raw); output.flush(); os.fsync(output.fileno())
+        temporary.replace(path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _publish_entry_file(path, raw):
+    _replace_entry_bytes(path, raw)
+
+
+def _restore_entry(path, before):
+    raw = _entry_bytes(before)
+    if raw is None:
+        if os.path.lexists(path):
+            path.unlink()
+        return
+    _replace_entry_bytes(path, raw)
+    os.utime(path, ns=(before["atime_ns"], before["mtime_ns"]))
+    path.chmod(before["mode"])
+    if os.name == "nt" and before.get("attributes") is not None:
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.SetFileAttributesW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD]
+        kernel.SetFileAttributesW.restype = wintypes.BOOL
+        if not kernel.SetFileAttributesW(str(path), before["attributes"]):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+
+def _validate_existing_entry(store, binary, previous):
+    snapshots = {name: _entry_snapshot(binary / name) for name in _ENTRY_FILES}
+    if previous is None:
+        if any(value["present"] for value in snapshots.values()):
+            raise ValueError("Entry files exist without an owned installation record; preserve unknown resources")
+        return snapshots
+    if previous.get("schema_version") != 1 or previous.get("repo_id") != store.repo_id or Path(previous.get("repo", "")).resolve() != worktrees(store.repo)[0]["path"]:
+        raise ValueError("Existing installation identity differs; preserve the entry")
+    from controller_leases import target_launcher
+    raw = _entry_bytes(snapshots["tenon.py"])
+    if raw is None:
+        raise ValueError("Owned installation has no launcher; explicit transaction recovery is required")
+    normalized = raw.decode("utf-8").replace("\r\n", "\n")
+    known = False
+    for candidate in (previous.get("launcher_source_commit"), previous.get("commit"), previous.get("previous_commit")):
+        if candidate and re.fullmatch(r"[0-9a-f]{40}", str(candidate)):
+            try:
+                known |= normalized == target_launcher(store.common, candidate).replace("\r\n", "\n")
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
+    # The real pre-ABI installer could publish its own old literal alongside a
+    # new target record. Recognize that exact historical template, never edits.
+    known |= previous.get("controller_lease_abi", 0) == 0 and hashlib.sha256(normalized.encode("utf-8")).hexdigest() == _LEGACY_LAUNCHER_SHA256
+    if not known:
+        raise ValueError("Existing launcher bytes are unclassified; preserve them instead of replacing")
+    return snapshots
+
+
+def _transaction_paths(store, transaction_id):
+    from controller_leases import redirected
+    if not re.fullmatch(r"[0-9a-f]{32}", str(transaction_id)):
+        raise ValueError("Invalid installation transaction identity")
+    directory = store.root / "installation-transactions" / transaction_id
+    if directory.resolve() != directory or directory.parent != store.root / "installation-transactions":
+        raise ValueError("Installation transaction escaped its storage")
+    for parent in (store.root / "bin", directory.parent, directory):
+        if os.path.lexists(parent) and (redirected(parent) or not parent.is_dir()):
+            raise ValueError("Installation storage is redirected or unclassified")
+    return directory, directory / "journal.json", store.root / "installation-pending.json"
+
+
+def _rollback_installation(store, primary, transaction, journal_path, pointer):
+    from engineering_common import safe_exception
+    binary = store.root / "bin"
+    blockers = []
+    for name in _ENTRY_FILES:
+        before, proposed = transaction["before"][name], transaction["proposed"][name]
+        try:
+            current = _entry_snapshot(binary / name)
+            current_raw = _entry_bytes(current)
+            old_raw, new_raw = _entry_bytes(before), _entry_bytes(proposed)
+            if current_raw == old_raw:
+                if current.get("present") and any(current.get(key) != before.get(key) for key in ("mode", "mtime_ns", "attributes")):
+                    _restore_entry(binary / name, before)
+                continue
+            if current_raw != new_raw:
+                raise ValueError("Entry changed independently; preserve " + name)
+            _restore_entry(binary / name, before)
+        except (OSError, ValueError) as error:
+            blockers.append(safe_exception(error))
+    alias = transaction["alias"]
+    try:
+        current = _alias_values(primary)
+        if alias["changed"]:
+            if current == alias["after"]:
+                _set_alias_values(primary, alias["before"])
+            elif current != alias["before"]:
+                raise ValueError("Local alias changed independently; preserve it")
+        elif hashlib.sha256(json.dumps(current, ensure_ascii=False).encode("utf-8")).hexdigest() != alias["unchanged_sha256"]:
+            raise ValueError("Unowned local alias changed; preserve it")
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        blockers.append(safe_exception(error))
+    transaction.update(state="RECOVERY_BLOCKED" if blockers else "ROLLED_BACK", blockers=blockers, recovered_at=utc_now())
+    _install_record(journal_path, transaction)
+    if blockers:
+        raise RuntimeError("Installation recovery retained unknown resources; use qualified source install --recover-only after inspection: " + str(journal_path))
+    pointer.unlink(missing_ok=True)
+    return {"status": "ROLLED_BACK", "transaction": transaction["transaction_id"], "journal": str(journal_path)}
+
+
+def _recover_pending_install(store, primary):
+    from controller_leases import read_json
+    pointer = store.root / "installation-pending.json"
+    if not os.path.lexists(pointer):
+        return {"status": "NO_PENDING_INSTALL"}
+    pending = read_json(pointer)
+    if pending.get("schema_version") != 1 or pending.get("repo_id") != store.repo_id:
+        raise ValueError("Pending installation belongs to an unknown repository/schema")
+    directory, journal_path, pointer = _transaction_paths(store, pending.get("transaction_id"))
+    transaction = read_json(journal_path)
+    if (transaction.get("schema_version") != 1 or transaction.get("repo_id") != store.repo_id
+            or transaction.get("transaction_id") != pending["transaction_id"] or transaction.get("primary") != str(primary)
+            or set(transaction.get("before", {})) != set(_ENTRY_FILES) or set(transaction.get("proposed", {})) != set(_ENTRY_FILES)):
+        raise ValueError("Installation recovery journal identity differs")
+    for value in [*transaction["before"].values(), *transaction["proposed"].values()]:
+        _entry_bytes(value)
+    if transaction.get("state") == "COMMITTED":
+        alias = transaction["alias"]
+        current_alias = _alias_values(primary)
+        alias_matches = current_alias == alias["after"] if alias["changed"] else hashlib.sha256(json.dumps(current_alias, ensure_ascii=False).encode("utf-8")).hexdigest() == alias["unchanged_sha256"]
+        if alias_matches and all(_entry_bytes(_entry_snapshot(store.root / "bin" / name)) == _entry_bytes(transaction["proposed"][name]) for name in _ENTRY_FILES):
+            pointer.unlink()
+            return {"status": "RECOVERED_COMMIT", "journal": str(journal_path)}
+        raise ValueError("Committed installation tuple changed independently; preserve it")
+    if transaction.get("state") not in {"PREPARED", "PUBLISHING", "ROLLED_BACK", "RECOVERY_BLOCKED"}:
+        raise ValueError("Unknown installation journal state; preserve it")
+    return _rollback_installation(store, primary, transaction, journal_path, pointer)
+
+
+def recover_installation(repo: Path):
+    from controller_leases import common_directory, mutation_context
+    if not (common_directory(repo) / "tenon/repository.json").is_file():
+        raise ValueError("No initialized repository installation can be recovered")
+    store = TaskStore(repo)
+    primary = worktrees(repo)[0]["path"]
+    with mutation_context(store):
+        return _recover_pending_install(store, primary)
+
+
+def _publish_installation(store, primary, selected_launcher, metadata, previous, requested_alias):
+    from engineering_common import safe_exception
+    binary = store.root / "bin"
+    binary.mkdir(exist_ok=True)
+    before = _validate_existing_entry(store, binary, previous)
+    descriptor, alias_status, alias = _alias_publication(primary, binary / "tenon.py", previous, requested_alias)
+    if descriptor:
+        metadata["git_alias"] = descriptor
+    proposed = {"tenon.py": {"present": True, "data": base64.b64encode(selected_launcher.encode("utf-8")).decode("ascii")},
+                "tenon.cmd": {"present": False}, "installation.json": {"present": True}}
+    if os.name == "nt":
+        command = '@echo off\r\n"' + sys.executable + '" -B "%~dp0tenon.py" %*\r\n'
+        proposed["tenon.cmd"] = {"present": True, "data": base64.b64encode(command.encode("utf-8")).decode("ascii")}
+    elif before["tenon.cmd"]["present"]:
+        raise ValueError("A foreign-platform command wrapper is present; preserve it")
+    metadata_bytes = (json.dumps(metadata, indent=2, ensure_ascii=False) + "\n").replace("\n", os.linesep).encode("utf-8")
+    proposed["installation.json"]["data"] = base64.b64encode(metadata_bytes).decode("ascii")
+    for item in proposed.values():
+        if item["present"]:
+            item["sha256"] = hashlib.sha256(base64.b64decode(item["data"])).hexdigest()
+    transaction_id = uuid.uuid4().hex
+    directory, journal_path, pointer = _transaction_paths(store, transaction_id)
+    directory.mkdir(parents=True)
+    transaction = {"schema_version": 1, "repo_id": store.repo_id, "transaction_id": transaction_id, "primary": str(primary),
+        "state": "PREPARED", "created_at": utc_now(), "before": before, "proposed": proposed, "alias": alias}
+    _install_record(journal_path, transaction)
+    if os.path.lexists(pointer):
+        raise ValueError("Another pending installation record appeared; preserve it")
+    _install_record(pointer, {"schema_version": 1, "repo_id": store.repo_id, "transaction_id": transaction_id})
+    try:
+        transaction["state"] = "PUBLISHING"; _install_record(journal_path, transaction)
+        _publish_entry_file(binary / "tenon.py", _entry_bytes(proposed["tenon.py"]))
+        if proposed["tenon.cmd"]["present"]:
+            _publish_entry_file(binary / "tenon.cmd", _entry_bytes(proposed["tenon.cmd"]))
+        if alias["changed"]:
+            _set_alias_values(primary, alias["after"])
+        write_json(binary / "installation.json", metadata)
+        for name in _ENTRY_FILES:
+            if _entry_bytes(_entry_snapshot(binary / name)) != _entry_bytes(proposed[name]):
+                raise ValueError("Published installation tuple verification differs: " + name)
+        transaction["state"] = "COMMITTED"; _install_record(journal_path, transaction)
+        pointer.unlink()
+    except BaseException as error:
+        transaction["failure"] = safe_exception(error)
+        _rollback_installation(store, primary, transaction, journal_path, pointer)
+        raise
+    return alias_status
 
 
 def audit(repo: Path, ref: str, published_rules: bool = False) -> dict:
@@ -214,7 +536,12 @@ def install(repo: Path, backend=None, *, git_alias: bool = False) -> dict:
         raise ValueError("Install requires the current dev CI to be fully successful")
     if "scripts/tenon.py" not in git(repo, "ls-tree", "-r", "--name-only", commit, "scripts/tenon.py").decode().splitlines():
         raise ValueError("Current green dev has no stable entry yet")
-    with FileLease(store.root / "locks/entry-install.lock"):
+    from controller_leases import mutation_context, source_capability, target_launcher
+    abi = source_capability(store.common, commit)
+    selected_launcher = target_launcher(store.common, commit)
+    with mutation_context(store, initialize=True):
+        primary = worktrees(repo)[0]["path"]
+        _recover_pending_install(store, primary)
         controller = deploy_controller(store, commit)
         directory = controller.parent.parent
         entry = directory / "scripts/tenon.py"
@@ -225,41 +552,46 @@ def install(repo: Path, backend=None, *, git_alias: bool = False) -> dict:
         metadata = {"schema_version": 1, "repo_id": store.repo_id, "repo": str(primary), "repository": backend.name,
                     "python_executable": str(Path(sys.executable).resolve()),
                     "commit": commit, "controller": str(directory), "installed_at": utc_now(),
+                    "controller_lease_abi": abi, "controller_lease_state": "KNOWN" if abi == 1 else "UNKNOWN_LEGACY",
+                    "launcher_source_commit": commit,
                     "previous_commit": previous.get("commit") if previous and previous.get("commit") != commit
                     else (previous or {}).get("previous_commit")}
-        # The small launcher validates every deployed script before executing anything.
+        # One literal, extracted from the verified target source rather than caller.
         launcher = '''#!/usr/bin/env python3
-import hashlib, json, os, subprocess, sys
+import json, os, subprocess, sys, types
 from pathlib import Path
+sys.dont_write_bytecode = True
 binary = Path(__file__).resolve().parent
+module = None
 try:
+    if (binary.parent / "installation-pending.json").exists():
+        raise ValueError("Installation transaction pending; readonly entry will not repair it. From retained primary run the Git-verified source installer with --repo PRIMARY install --recover-only")
     config = json.loads((binary / "installation.json").read_text(encoding="utf-8"))
-    root = Path(config["controller"])
-    manifest = json.loads((root / "controller.json").read_text(encoding="utf-8"))
-    if manifest["commit"] != config["commit"]:
-        raise ValueError("Controller version differs")
-    for item in manifest["files"]:
-        path = (root / item["path"]).resolve()
-        if not path.is_relative_to(root.resolve()) or hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
-            raise ValueError("Controller integrity check failed")
-    if "--repo" in sys.argv[1:] or any(item.startswith("--repo=") for item in sys.argv[1:]):
-        raise ValueError("This installed entry is bound to its registered repository")
-    raise SystemExit(subprocess.run([sys.executable, str(root / "scripts/tenon.py"), "--repo", config["repo"], *sys.argv[1:]]).returncode)
-except (OSError, ValueError, KeyError) as error:
-    print(json.dumps({"status": "BLOCKED", "reason": str(error)}))
+    if config.get("controller_lease_abi") != 1:
+        raise ValueError("Installed entry has no supported execution ABI; run its qualified source installer explicitly")
+    common = binary.parent.parent
+    environment = os.environ.copy()
+    for key in tuple(environment):
+        if key in {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM"} or key.startswith("GIT_CONFIG_KEY_") or key.startswith("GIT_CONFIG_VALUE_"):
+            environment.pop(key, None)
+    payload = subprocess.check_output(["git", "--no-optional-locks", "--git-dir", str(common), "show", config["commit"] + ":scripts/controller_leases.py"],
+        cwd=common, env=environment, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30)
+    module = types.ModuleType("controller_leases")
+    module.__file__ = str(Path(config["controller"]) / "scripts/controller_leases.py")
+    sys.modules["controller_leases"] = module
+    exec(compile(payload, module.__file__, "exec"), module.__dict__)
+    if module.CONTROLLER_LEASE_ABI != 1:
+        raise ValueError("Unsupported controller bootstrap ABI")
+    raise SystemExit(module.run_installed(config, sys.argv[1:], binary))
+except (OSError, ValueError, KeyError, ImportError, RuntimeError, subprocess.SubprocessError) as error:
+    print(json.dumps(module.error_result(error) if module and hasattr(module, "error_result") else {"status": "BLOCKED", "reason": str(error)}))
     raise SystemExit(2)
 '''
-        temporary = binary / "tenon.py.tmp"
-        temporary.write_text(launcher, encoding="utf-8")
-        temporary.replace(binary / "tenon.py")
-        if os.name == "nt":
-            (binary / "tenon.cmd").write_text('@echo off\n"' + sys.executable + '" "%~dp0tenon.py" %*\n', encoding="utf-8")
-        owned_alias, alias_status = install_git_alias(primary,binary/"tenon.py",previous,git_alias)
-        if owned_alias:
-            metadata["git_alias"] = owned_alias
-        write_json(binary / "installation.json", metadata)
+        alias_status = _publish_installation(store, primary, selected_launcher, metadata, previous, git_alias)
         return {"status": "INSTALLED", "entry": str(binary / "tenon.py"), "commit": commit,
-                "repo": str(primary), "capabilities": capabilities(),"git_alias":alias_status}
+                "repo": str(primary), "capabilities": capabilities(),"git_alias":alias_status,
+                "controller_lease_abi": abi, "controller_lease_state": metadata["controller_lease_state"],
+                "launcher_source_commit": commit}
 
 
 def task_status(repo: Path, task_id: str) -> dict:
@@ -273,11 +605,12 @@ def task_status(repo: Path, task_id: str) -> dict:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description=__doc__)
+    result = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     result.add_argument("--repo", type=Path, default=ROOT)
     commands = result.add_subparsers(dest="command", required=True)
     install_command = commands.add_parser("install")
     install_command.add_argument("--git-alias",action="store_true",help="Install an owned per-repository git tenon shortcut if the name is free")
+    install_command.add_argument("--recover-only", action="store_true", help="Restore an interrupted known entry tuple without selecting or publishing another version")
     diagnose = commands.add_parser("doctor")
     diagnose.add_argument("--full", action="store_true", help="Read-only fixed-primary, entry, host, schedule and cleanup health")
     measuring = commands.add_parser("metrics")
@@ -359,7 +692,7 @@ def main(argv: list[str] | None = None) -> int:
     repo = args.repo.resolve()
     try:
         if args.command == "install":
-            value = install(repo,git_alias=args.git_alias)
+            value = recover_installation(repo) if args.recover_only else install(repo,git_alias=args.git_alias)
         elif args.command == "host":
             from host_profile import configure,load
             configure(repo,json.loads(args.verify_command_json),args.input,args.python_path)
@@ -380,8 +713,9 @@ def main(argv: list[str] | None = None) -> int:
                 value = {"status": "READY" if shutil.which("git") else "BLOCKED", "repo": str(repo),
                          "capabilities": capabilities(), "dev_sha": git(repo, "rev-parse", "origin/dev").decode().strip()}
         elif args.command == "maintenance":
-            return subprocess.run([sys.executable, str(Path(__file__).with_name("maintenance.py")),
-                "--repo", str(repo), *args.maintenance_args], cwd=repo).returncode
+            from controller_leases import entry_command
+            return subprocess.run(entry_command(Path(__file__).with_name("maintenance.py"),
+                "--repo", str(repo), *args.maintenance_args), cwd=repo).returncode
         elif args.command == "reconcile":
             from task_queue import reconcile
             value = reconcile(repo, apply=args.apply)
@@ -459,15 +793,16 @@ def main(argv: list[str] | None = None) -> int:
                 store = TaskStore(repo)
                 if store.load(args.id).get("host_platform") != os.name:
                     raise ValueError("Use the registered lifecycle host Git implementation")
-                with FileLease(store.root / "locks/integration.lock"), FileLease(store.root / "locks" / (args.id + "-controller.lock")):
+                with integration_scope(store), FileLease(store.root / "locks" / (args.id + "-controller.lock")):
                     result = Lifecycle(repo, args.id).deliver()
                 if result.get("status") in {"NEEDS_ATTENTION", "DEV_CI_FAILED", "CLEANED"}:
                     print(json.dumps(result, indent=2))
                     return 0 if result["status"] == "CLEANED" else 2
             value = {"queue": submit(repo, args.id), "worker": launch(repo)}
         else:
-            return subprocess.run([sys.executable, str(Path(__file__).with_name("task_lifecycle.py")),
-                "resume", "--repo", str(repo), "--id", args.id], cwd=repo).returncode
+            from controller_leases import entry_command
+            return subprocess.run(entry_command(Path(__file__).with_name("task_lifecycle.py"),
+                "resume", "--repo", str(repo), "--id", args.id), cwd=repo).returncode
         print(json.dumps(value, indent=2, ensure_ascii=False))
         return 0 if value.get("status") not in {"BLOCKED","FAIL"} else 2
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError, subprocess.SubprocessError) as error:
