@@ -222,7 +222,8 @@ def install(repo: Path, backend=None, *, git_alias: bool = False) -> dict:
         binary = store.root / "bin"
         binary.mkdir(parents=True, exist_ok=True)
         previous = json.loads((binary / "installation.json").read_text(encoding="utf-8")) if (binary / "installation.json").exists() else None
-        metadata = {"schema_version": 1, "repo_id": store.repo_id, "repo": str(primary),
+        metadata = {"schema_version": 1, "repo_id": store.repo_id, "repo": str(primary), "repository": backend.name,
+                    "python_executable": str(Path(sys.executable).resolve()),
                     "commit": commit, "controller": str(directory), "installed_at": utc_now(),
                     "previous_commit": previous.get("commit") if previous and previous.get("commit") != commit
                     else (previous or {}).get("previous_commit")}
@@ -277,7 +278,8 @@ def parser() -> argparse.ArgumentParser:
     commands = result.add_subparsers(dest="command", required=True)
     install_command = commands.add_parser("install")
     install_command.add_argument("--git-alias",action="store_true",help="Install an owned per-repository git tenon shortcut if the name is free")
-    commands.add_parser("doctor")
+    diagnose = commands.add_parser("doctor")
+    diagnose.add_argument("--full", action="store_true", help="Read-only fixed-primary, entry, host, schedule and cleanup health")
     measuring = commands.add_parser("metrics")
     measuring.add_argument("--remote",action="store_true",help="Explicitly query remote heads; default observations are local only")
     measuring.add_argument("--month",help="Include evidence-linked improvement items for UTC month YYYY-MM")
@@ -348,8 +350,12 @@ def main(argv: list[str] | None = None) -> int:
             if args.month is not None:
                 value["improvement_items"] = improvement_items(value,args.month)
         elif args.command == "doctor":
-            value = {"status": "READY" if shutil.which("git") else "BLOCKED", "repo": str(repo),
-                     "capabilities": capabilities(), "dev_sha": git(repo, "rev-parse", "origin/dev").decode().strip()}
+            if args.full:
+                from engineering_health import full_doctor
+                value = full_doctor(repo)
+            else:
+                value = {"status": "READY" if shutil.which("git") else "BLOCKED", "repo": str(repo),
+                         "capabilities": capabilities(), "dev_sha": git(repo, "rev-parse", "origin/dev").decode().strip()}
         elif args.command == "maintenance":
             return subprocess.run([sys.executable, str(Path(__file__).with_name("maintenance.py")),
                 "--repo", str(repo), *args.maintenance_args], cwd=repo).returncode
