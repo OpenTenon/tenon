@@ -5,6 +5,8 @@ description: Inspect Tenon generated-file drift or verify generator/specificatio
 
 # Tenon generated artifacts
 
+Before repository execution, use `git tenon doctor --full` and inspect `git tenon task context --id <id>` for an existing task. A stale or historical context does not authorize regeneration.
+
 Input: the reported generated path or authorized generator/specification change. The inventory, rather than a filename convention, determines ownership.
 
 - Obtain the exact output inventory from `python3 tools/generate_tier0.py --list-outputs`; it includes Tcl and generated filler RTL as well as package configs and pin manifests.

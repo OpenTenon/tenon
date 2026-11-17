@@ -1,35 +1,15 @@
 # Evaluating the five repository Skills
 
-Use this reference when changing Skill routing/contracts or selecting a model for
-an explicitly requested regression run. Ordinary verification does not invoke a model.
+Use this reference for Skill contracts/routing or an explicitly requested model regression. Ordinary verification and the offline suite make zero model calls.
 
-`python3 scripts/skill_eval.py` lists the original ten cases plus additional
-regressions and makes zero model calls. Deterministic Skill checks run in CI.
+`python3 scripts/skill_eval.py` plans the original ten cases, eight prior regressions and additive phase2 cases. It records model metrics NOT_RUN/null. IDs are stable; new incidents add regressions rather than replacing history.
 
-Explicit execution requires `--execute`, `--model`, `--max-calls` and
-`--token-budget`. Calls count CLI invocations; one invocation can contain multiple
-provider requests. The configured provider is preserved.
+`python3 scripts/skill_offline.py` executes deterministic isolated workflow fixtures and writes build/verification/skill-offline/results.json. It checks actual source scope, pure-helper behavior, full/partial evidence rejection, stale analysis context, byte-stable duplicate/conflicting events and archive-first cleanup recovery with real local bare refs/worktrees. Cleanup PR/CI snapshots are simulated and explicitly qualified. Offline PASS does not measure model routing or autonomous completion.
 
-Strict budget mode is the default. The current CLI has no verified hard token
-ceiling, so strict execution stops before calling a model. An explicitly selected
-`--budget-mode observed` uses actual input/output token reports to stop subsequent
-invocations. A turn in progress can exceed that budget. Missing usage stops the
-batch; it is never counted as zero. This is not a monetary spending guarantee.
-Per-invocation time and retained output bytes are bounded independently.
+The same offline entry resolves a safe existing native/Node CLI and performs only version plus effective `mcp list` configuration queries from a fresh child CODEX_HOME and exact fixture CWD. Fake base/profile/trusted-project layers must all be inventoried and disabled; server sentinels must not start. No real provider/auth config is copied; raw inventory/stderr/credential fields never enter a report. Unsupported/unavailable capabilities report NOT_RUN with sanitized provenance. `--codex-bin` can select an existing native CLI when PATH points at an unusable shell shim. No installation is attempted.
 
-Read-only cases preserve inputs. Implementation cases use disposable Git
-repositories and local bare origins, a narrow writable file scope and actual
-behavior/ref assertions. Account integrations and network are disabled for the
-invocation. No evaluation grants production delivery permission.
+Real model execution requires explicit `--execute`, `--model`, `--max-calls` and `--token-budget`. Strict mode is the default and refuses before any model invocation because no hard total token ceiling is verified. It never falls back automatically. Only explicit `--budget-mode observed` permits observed usage accounting; an in-flight turn may exceed the total. Missing usage stops the batch, never counts as zero. Calls count CLI invocations, not provider requests; timeout/output bounds are separate from token or money guarantees.
 
-Implementation cases assess only scoped file changes; model processes receive no
-writable Git metadata or bare-origin directory and are never asked to commit/push.
-Each invocation inventories effective MCP settings from its exact fixture working
-directory, including the selected `--profile` and trusted project layers, then
-checks a second config-only inventory after per-server disable overrides. The
-inventory is kept in memory; provider/auth fields and credential files stay put.
+Read-only model cases preserve files/refs. Writable model cases have a narrow file scope and an independent AST-vetted behavior oracle; the model receives no writable Git metadata/remote and is never asked to commit or push. Exact-fixture MCP configuration is inventoried, per-server disabled and rechecked before any invocation. Reports retain qualified source/CLI/model identities, traces, usage, scoped diffs and independent assertions. Correct prompt words or a routing signal cannot prove outcomes.
 
-Reports retain raw traces, source and CLI/model identities, usage, scoped diffs,
-fixture assertions and routing signals. Correct words alone cannot pass an
-outcome. Compare routing errors, fixture success, elapsed time and observed usage;
-retain unknown observations and human semantic review separately.
+See [governance and limitations](../../../../docs/engineering/SKILL-GOVERNANCE.md) for interfaces and maintenance.

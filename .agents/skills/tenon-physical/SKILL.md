@@ -9,7 +9,7 @@ Read [physical execution and evidence](../../../docs/engineering/WORKFLOW.md#phy
 
 Input: the requested PDK, profile, variant and operation, plus any separately granted exception authorization.
 
-- Select the requested PDK/profile/variant and run the PDK or physical doctor profile. Missing commercial views or tools are blockers; do not install or replace a PDK.
+- Use `git tenon doctor --full` for engineering readiness, then select the requested PDK/profile/variant and run the PDK or physical doctor profile. Missing commercial views or tools are blockers; do not install or replace a PDK.
 - Run `make verify-pdk TENON_PDK=<ihp130|sky130|gf180|ics55>` before physical work. Retain the resulting summary.
 - Use the existing named Make hardening target. Shared execution enforces an exclusive workspace lease and refuses an existing native run tag; use a separate worktree for a new run.
 - AGENTS.md defines the complete exception boundary. Do not skip extraction, LVS, antenna or connectivity checks. DRC-only skipping requires explicit user authorization and its audit reference; a reference string itself is not permission.
@@ -23,4 +23,4 @@ is removed. External PDK installations are not copied; fingerprints/revisions ar
 retained. Archive failure keeps originals. An archive is historical evidence, not
 fresh verification or signoff.
 
-Completion: retain qualified native evidence and report each executed, skipped and blocked check. Recovery uses the recorded lease/run identity; preserve existing runs and resume through the controller after prerequisites are resolved. An absent PDK or unsupported foundry abstract stays blocked.
+Completion: retain qualified native evidence and report each executed, skipped and blocked check. Recovery starts with `git tenon task context --id <id>` and uses the recorded lease/run identity; preserve existing runs and resume through the controller after prerequisites are resolved. An absent PDK or unsupported foundry abstract stays blocked.

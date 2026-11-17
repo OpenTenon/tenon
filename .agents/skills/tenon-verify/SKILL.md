@@ -1,31 +1,18 @@
 ---
 name: tenon-verify
-description: Verify a Tenon code or engineering-tool change and assess source-matched review evidence. Excludes conceptual questions and manufacturing signoff.
+description: Verify a Tenon implementation or engineering-tool change and qualify its current-source evidence. Excludes conceptual questions, model accuracy claims and physical signoff.
 ---
 
 # Tenon verification
 
-Input: the candidate checkout and requested verification level; include the task ID or existing evidence when resuming.
+Input: candidate checkout, required verification level and any task ID/existing evidence.
 
-Use [verification and CI](../../../docs/engineering/WORKFLOW.md#verification-and-ci) for commands and evidence requirements.
+1. Use `git tenon doctor --full` for stable-entry/host/workflow readiness. Missing prerequisites remain BLOCKED; do not install tools as part of diagnosis.
+2. Run `make verify` for complete fast verification. Full local execution remains unsharded. CI covers the Linux groups and two Windows shards with a strict aggregate gate.
+3. Inspect summary, complete case inventory, actual outcomes, skip reasons and failed logs. PASS for a selected shard is partial evidence; BLOCKED, NOT_RUN, skipped required jobs and dry runs do not pass full handoff.
+4. Match evidence to HEAD, the complete worktree fingerprint and frozen host inputs. Only unchanged valid input may reuse a full result. Use `git tenon task context --id <id>` to inspect current qualification and `git tenon task handoff --id <id> --evidence <summary.json>` for durable handoff.
+5. State what actually executed, failed or remains unrun. Preserve reports under build/verification for archive-first cleanup. Behavioral CI, offline Skill fixtures and historical archives do not establish real-PDK or manufacturing signoff.
 
-1. Run `make doctor` when environment capabilities are uncertain. On Windows, the Python diagnostic is available without Make.
-2. Run `make verify`; CI uses the same implementation in format, check and sim groups. Do not replace required checks with a smaller personal checklist.
-3. Inspect the machine-readable summary and failed logs. `BLOCKED` means a prerequisite is missing; `NOT_RUN` and dry-run output are not passing checks.
-4. Match evidence to both HEAD and the complete worktree fingerprint. Re-run affected verification after source changes; do not reuse another branch's result.
-5. Report actual compilation/behavioral coverage, failures and unexecuted checks. CI models provide no real-PDK or signoff evidence.
+Completion: retain a source-qualified full summary/logs and explicit coverage limits; verification preserves tracked source. On failure, resolve the recorded prerequisite or scoped defect and verify the changed candidate. Normal authorized delivery uses the existing controller and current PR/dev CI gates. Main promotion remains human.
 
-Use `scripts/task.py handoff` for a persistent engineering task. Verification leaves tracked sources unchanged. Formatting, regeneration and tracked report updates are separate explicit mutations.
-
-For automatic delivery, use the shared controller: inspect scope/staging, commit
-normally, run one full verification for that committed head, then push and wait
-for fresh CI. Do not rerun unchanged-input validation just to re-express a step.
-CI still checks every new candidate and merged dev. Failed diagnostics include
-a bounded log tail; full reports are retained and archived outside the worktree.
-Cleanup is complete only after dev is green, archives verify and owned resources
-are confirmed absent. Historical archived evidence never replaces current-source
-validation. Main merging remains human.
-
-Completion: retain the summary and logs with the exact source identity, executed coverage and explicit missing checks. A blocked check is complete as a diagnosis, not a passing handoff. Recovery fixes the recorded prerequisite or task-caused failure, then verifies the changed candidate; unchanged valid evidence can be reused.
-
-For Skill or model regression work, read [evaluation and budget limits](references/evaluation.md). Model execution is separately opt-in.
+Read [verification and CI](../../../docs/engineering/WORKFLOW.md#verification-and-ci). For Skill work read [evaluation and budget limits](references/evaluation.md); deterministic offline PASS is separate from LLM routing/completion metrics.

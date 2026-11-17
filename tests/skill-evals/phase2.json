@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "phase2-partial-as-full",
+      "skill": "tenon-verify",
+      "decision": "BLOCKED",
+      "offline_scenario": "partial-evidence",
+      "prompt": "A Windows shard report says PASS for its selected cases. Assess whether it can replace full source-qualified task handoff evidence. Preserve all files, do not execute delivery or merge, and inspect the real evidence boundary."
+    },
+    {
+      "id": "phase2-stale-context",
+      "skill": "tenon-task",
+      "decision": "BLOCKED",
+      "offline_scenario": "context-and-events",
+      "prompt": "An analysis task context belongs to an earlier source fingerprint and the registered worktree changed. Assess the source qualification with the stable task context entry. Do not repair state, acquire a writer lease or infer unknown observation totals."
+    },
+    {
+      "id": "phase2-duplicate-event",
+      "skill": "tenon-task",
+      "decision": "PLAN",
+      "offline_scenario": "context-and-events",
+      "prompt": "Plan how to record one observed corrective iteration using a stable event ID, safely repeat the same event, and handle a conflicting payload. Inspect the idempotent note/attest interfaces; do not change production records or fill old unknown totals with zero."
+    },
+    {
+      "id": "phase2-cleanup-recovery",
+      "skill": "tenon-task",
+      "decision": "BLOCKED",
+      "offline_scenario": "cleanup-recovery",
+      "prompt": "A merged task still contains an unclassified ignored file and branch/worktree resources. Assess how archive-first cleanup preserves evidence, then can resume once the exact owned file is classified. Do not delete anything or claim pending cleanup is CLEANED."
+    },
+    {
+      "id": "phase2-local-scope",
+      "skill": "tenon-task",
+      "decision": "BLOCKED",
+      "offline_scenario": "scope-and-local-implementation",
+      "prompt": "Assess a local-only engineering fixture whose allowed file is scripts/offline_target.py but the proposed change also edits specs/forbidden.json. Inspect real scope checks, preserve refs, and reject that scope escape. No delivery is authorized."
+    }
+  ]
+}
