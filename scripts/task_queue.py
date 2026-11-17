@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Explicit, versioned queue for verified delivery and already-merged cleanup only."""
 from __future__ import annotations
+import copy
 import json
+import re
 import os
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -141,6 +143,153 @@ def preflight(store: TaskStore, entry: dict, apply: bool = False) -> dict:
     return task
 
 
+def _attempt_identity(active):
+    return {key: active[key] for key in ("owner_id", "generation", "input_candidate", "ordinal")}
+
+
+def _event(active, operation, entry, *, status=None, category=None, reason=None, derivation=None):
+    from task_observations import fingerprint
+    identity = _attempt_identity(active)
+    payload = {"operation": operation, **identity}
+    if operation == "controller-result":
+        classification = ("transient-retry" if category == "TRANSIENT" else "resource-retry" if category == "RESOURCE"
+            else "policy-blocked" if category else "ci-wait" if status in {"WAITING_CI", "WAITING_DEV_CI"}
+            else "resource-wait" if status == "WAITING_RESOURCE" else "phase-result")
+        payload.update(status=status, classification=classification, error_category=category, reason=reason,
+                       observed_candidate=entry["candidate_sha"], stage=entry["stage"])
+    provenance = {"recorded_at": active["started_at"] if operation == "controller-start" else utc_now(),
+                  "source": "queue-v1", "coverage": "queued-candidate logical operations"}
+    if derivation:
+        provenance["base_derivations"] = copy.deepcopy(derivation)
+    return {"id": "q-" + fingerprint({"operation": operation, **identity}),
+            "payload": payload, "provenance": provenance}
+
+
+def _derivation_proves(store, proof, old, new):
+    if store.repo is None or not isinstance(proof, dict) or proof.get("from_head") != old or not proof.get("token") or not proof.get("dev_sha"):
+        return False
+    parents = git(store.repo, "show", "-s", "--format=%P", new).decode().split()
+    message = git(store.repo, "show", "-s", "--format=%B", new).decode().splitlines()
+    return parents == [old, proof["dev_sha"]] and "Tenon-Base-Merge: " + proof["token"] in message
+
+
+def _candidate_chain(store, task, entry, old, new, saved=None):
+    """Prove every merge hop; ancestry alone is never a derivation contract."""
+    if not all(re.fullmatch(r"[0-9a-f]{40}", str(value or "")) for value in (old,new)):
+        raise ValueError("Observation candidate identity is missing")
+    chain = copy.deepcopy([] if saved is None else saved)
+    if not isinstance(chain, list):
+        raise ValueError("Observation derivation chain is malformed")
+    cursor = old
+    for proof in chain:
+        if (not isinstance(proof, dict) or proof.get("from_head") != cursor
+                or not re.fullmatch(r"[0-9a-f]{40}", str(proof.get("result_head", "")))
+                or not _derivation_proves(store, proof, cursor, proof["result_head"])):
+            raise ValueError("Observation derivation chain has an unproven hop")
+        cursor = proof["result_head"]
+    if cursor != new:
+        for proof in (entry.get("transition"), task.get("base_merge_intent")):
+            if (isinstance(proof, dict) and proof.get("from_head") == cursor
+                    and proof.get("result_head", new) == new and _derivation_proves(store, proof, cursor, new)):
+                chain.append({**copy.deepcopy(proof), "result_head": new})
+                cursor = new
+                break
+    if cursor != new:
+        raise ValueError("Observation candidate changed without a complete proven base derivation chain")
+    return chain
+
+
+def _valid_observation(store, task, entry, event):
+    from task_observations import fingerprint
+    payload = event["payload"]
+    if (entry.get("owner_id") != task.get("owner_id") or entry.get("repo_id") != store.repo_id
+            or entry.get("task_id") != task["task_id"] or payload.get("owner_id") != entry["owner_id"]
+            or type(entry.get("generation")) is not int or type(payload.get("generation")) is not int or payload["generation"] != entry.get("generation")
+            or type(payload.get("ordinal")) is not int or payload["ordinal"] < 1
+            or not re.fullmatch(r"[0-9a-f]{40}", str(payload.get("input_candidate", "")))
+            or payload.get("operation") not in {"controller-start", "controller-result"}):
+        raise ValueError("Machine outbox owner/generation/candidate binding differs")
+    limit = entry.get("attempts")
+    if (type(limit) is not int or limit < 0
+            or payload["ordinal"] > limit + (1 if payload["operation"] == "controller-start" else 0)):
+        raise ValueError("Machine outbox ordinal is outside its queue attempt range")
+    identity = {key: payload[key] for key in ("owner_id", "generation", "input_candidate", "ordinal")}
+    if event["id"] != "q-" + fingerprint({"operation": payload["operation"], **identity}):
+        raise ValueError("Machine outbox event identity differs")
+    if payload["operation"] == "controller-result" and payload.get("observed_candidate") != entry["candidate_sha"]:
+        raise ValueError("Machine result observed candidate differs")
+    provenance = event.get("provenance", {})
+    chain = provenance.get("base_derivations")
+    if chain is None and provenance.get("base_derivation"):
+        chain = [{**provenance["base_derivation"], "result_head": entry["candidate_sha"]}]
+    if chain is None:
+        active = entry.get("active_attempt", {})
+        chain = active.get("derivations", []) if active.get("input_candidate") == payload["input_candidate"] else []
+    _candidate_chain(store, task, entry, payload["input_candidate"], entry["candidate_sha"], chain)
+
+
+def _drain_observations(store, task_id, path, entry):
+    from task_observations import mirror_machine
+    task = store.load(task_id)
+    changed = False
+    for row in [*entry.get("history", []), entry]:
+        if not row.get("observation_outbox"):
+            continue
+        for event in row["observation_outbox"]:
+            _valid_observation(store, task, row, event)
+        mirror_machine(store, task_id, row)
+        row["observation_outbox"] = []
+        changed = True
+    if changed:
+        write_json(path, entry)
+
+
+def _begin_attempt(store, task, path, entry):
+    """Durable queue intent before execution; an interrupted intent reuses its ID."""
+    generation = entry.get("generation")
+    active = entry.get("active_attempt")
+    if type(generation) is not int or generation < 1 or type(entry.get("attempts")) is not int or entry["attempts"] < 0:
+        if active:
+            raise ValueError("Interrupted controller attempt has unknown generation/ordinal")
+        return None  # Legacy provenance is unknown, never invented or backfilled.
+    if active:
+        if (active.get("owner_id") != entry["owner_id"] or type(active.get("generation")) is not int
+                or active["generation"] != generation
+                or type(active.get("ordinal")) is not int or active["ordinal"] < 1
+                or ("external" in active and type(active["external"]) is not bool)
+                or active["ordinal"] != entry["attempts"] + 1):
+            raise ValueError("Interrupted controller attempt identity differs")
+        chain = _candidate_chain(store, task, entry, active.get("input_candidate"), entry["candidate_sha"],
+                                 active.get("derivations", []))
+        if active.get("derivations") != chain:
+            active["derivations"] = chain
+            # Capture accepted hops before another operation can replace the last intent.
+            write_json(path, entry)
+    else:
+        active = {"owner_id": entry["owner_id"], "generation": generation, "input_candidate": entry["candidate_sha"],
+                  "ordinal": entry["attempts"] + 1, "started_at": utc_now(), "derivations": []}
+        entry["active_attempt"] = active
+        entry.setdefault("observation_coverage", {"schema_version": 1, "scope": "queued-operations",
+            "from_generation": generation, "from_attempt": active["ordinal"],
+            "complete_from_generation_start": entry["attempts"] == 0, "input_candidate": entry["candidate_sha"]})
+        entry.setdefault("observation_outbox", []).append(_event(active, "controller-start", entry))
+        write_json(path, entry)
+    _drain_observations(store, task["task_id"], path, entry)
+    return active
+
+
+def _finish_attempt(store, task, entry, result, category=None, reason=None):
+    active = entry.get("active_attempt")
+    if not active:
+        return
+    chain = _candidate_chain(store, task, entry, active["input_candidate"], entry["candidate_sha"],
+                             active.get("derivations", []))
+    event = _event(active, "controller-result", entry, status=result.get("status"), category=category,
+                   reason=reason, derivation=chain)
+    entry.setdefault("observation_outbox", []).append(event)
+    entry.pop("active_attempt", None)
+
+
 def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime | None = None) -> dict:
     store = TaskStore(repo)
     now = now or datetime.now(timezone.utc)
@@ -149,6 +298,10 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
         external = None
         task_id = path.stem
         entry = read_queue(store, task_id)
+        if apply and any(row.get("observation_outbox") for row in [*entry.get("history", []),entry]):
+            with FileLease(store.root / "locks" / (task_id + "-controller.lock")):
+                entry = read_queue(store, task_id)
+                _drain_observations(store, task_id, path, entry)
         if entry.get("state") in {"DONE", "BLOCKED", "WAITING_APP"}:
             results.append({"task_id": task_id, "state": entry["state"]})
             continue
@@ -165,8 +318,10 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
         # One integration owner and the same per-task lease used by foreground delivery.
         with FileLease(store.root / "locks/integration.lock"), FileLease(store.root / "locks" / (task_id + "-controller.lock")):
             entry = read_queue(store, task_id)
+            attempt_started = False
             try:
                 task = preflight(store, entry, apply=True)
+                attempt_started = _begin_attempt(store, task, path, entry) is not None
                 lifecycle = factory(repo, task_id)
                 if task.get("status") == "CLEANED":
                     verify_task_archive(store, task)
@@ -186,15 +341,28 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
                 status = result.get("status")
                 state = "DONE" if status == "CLEANED" else ("WAITING_APP" if status == "NEEDS_APP_ARCHIVE" else
                         "BLOCKED" if status in {"BLOCKED", "NEEDS_ATTENTION", "DEV_CI_FAILED"} else "WAITING")
-                entry.update(state=state, last_result=result, attempts=entry["attempts"] + 1,
+                pending_external = bool(external and entry.get("active_attempt"))
+                # The logical attempt remains open across the external invocation.
+                # Repeating a fresh handoff after process exit cannot consume it again.
+                entry.update(state=state, last_result=result, attempts=entry["attempts"] + (0 if pending_external else 1),
                              next_attempt_at=(now + timedelta(seconds=int(result.get("next_poll_seconds", 30)))).isoformat())
+                if pending_external:
+                    entry["active_attempt"]["external"] = True
+                else:
+                    _finish_attempt(store, observed, entry, result)
             except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
                 category = classify(error)
+                # A persisted start whose mirror failed has not executed or closed.
+                # Preserve its ordinal so a later publisher retry can resume it.
+                unexecuted_start = not attempt_started and bool(entry.get("active_attempt"))
                 entry.update(state="WAITING" if category in {"TRANSIENT", "RESOURCE"} else "BLOCKED",
-                             error_category=category, reason=str(error), attempts=entry["attempts"] + 1,
+                             error_category=category, reason=str(error), attempts=entry["attempts"] + (0 if unexecuted_start else 1),
                              next_attempt_at=(now + timedelta(seconds=min(300, 5 * 2 ** min(entry["attempts"], 6)))).isoformat())
+                if attempt_started:
+                    _finish_attempt(store, store.load(task_id), entry, {"status":entry["state"]}, category, str(error))
             entry["updated_at"] = utc_now()
             write_json(path, entry)
+            _drain_observations(store, task_id, path, entry)
             results.append({"task_id": task_id, "state": entry["state"], "reason": entry.get("reason")})
         # The external controller acquires its own task lock; do not hold ours across this handoff.
         if external:
@@ -207,6 +375,9 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
                     entry = read_queue(store, task_id)
                     entry.update(last_result=result, state="DONE" if result.get("status") == "CLEANED" else
                                  "WAITING_APP" if result.get("status") == "NEEDS_APP_ARCHIVE" else "WAITING")
+                    if entry.get("active_attempt"):
+                        entry["attempts"] += 1
+                    _finish_attempt(store, store.load(task_id), entry, result)
                     write_json(path, entry)
                 results[-1] = {"task_id": task_id, "state": entry["state"]}
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
@@ -214,8 +385,17 @@ def reconcile(repo: Path, apply: bool = False, factory=Lifecycle, now: datetime 
                     entry = read_queue(store, task_id)
                     entry.update(state="WAITING" if classify(error) in {"RESOURCE", "TRANSIENT"} else "BLOCKED",
                                  reason=str(error), error_category=classify(error))
+                    if entry.get("active_attempt"):
+                        entry["attempts"] += 1
+                    _finish_attempt(store, store.load(task_id), entry, {"status":entry["state"]}, classify(error), str(error))
                     write_json(path, entry)
                 results[-1] = {"task_id": task_id, "state": entry["state"], "reason": str(error)}
+            # The operation result is durable. Publisher failure must preserve its
+            # closed state/ordinal/outbox, exactly like the ordinary result path.
+            # A later reconcile only drains; it never reclassifies the operation.
+            with FileLease(store.root / "locks" / (task_id + "-controller.lock")):
+                entry = read_queue(store, task_id)
+                _drain_observations(store, task_id, path, entry)
     states = {item["state"] for item in results}
     status = "BLOCKED" if "BLOCKED" in states else "WAITING" if states & {"WAITING","BACKOFF","QUEUED","WAITING_APP"} else "OBSERVED"
     return {"schema_version": 1, "status":status, "qualification":"Queue observation only; WAITING is never CLEANED",

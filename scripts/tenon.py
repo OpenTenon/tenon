@@ -316,6 +316,29 @@ def parser() -> argparse.ArgumentParser:
     for name in ("status", "resume", "verify", "submit", "deliver"):
         command = tasks.add_parser(name)
         command.add_argument("--id", required=True)
+    context = tasks.add_parser("context")
+    context.add_argument("--id", required=True)
+    note = tasks.add_parser("note")
+    note.add_argument("--id", required=True)
+    note.add_argument("--event-id", required=True)
+    note.add_argument("--kind", choices=("intervention","rework"), required=True)
+    note.add_argument("--reason", required=True)
+    attest = tasks.add_parser("attest")
+    attest.add_argument("--id", required=True)
+    attest.add_argument("--event-id", required=True)
+    attest.add_argument("--human-interventions", type=int, required=True)
+    attest.add_argument("--rework", type=int, required=True)
+    attest.add_argument("--evidence-digest", required=True)
+    attest.add_argument("--coverage-start", choices=("task-start","tracking-start"), required=True)
+    attest.add_argument("--reason", required=True)
+    handoff = tasks.add_parser("handoff")
+    handoff.add_argument("--id", required=True)
+    handoff.add_argument("--evidence", type=Path, action="append", default=[])
+    handoff.add_argument("--remaining", action="append", default=[])
+    handoff.add_argument("--human-interventions", type=int)
+    handoff.add_argument("--rework", type=int)
+    handoff.add_argument("--observations-complete", action="store_true")
+    handoff.add_argument("--evidence-digest")
     reconciliation = commands.add_parser("reconcile")
     reconciliation.add_argument("--all", action="store_true", required=True)
     reconciliation.add_argument("--once", action="store_true", required=True)
@@ -377,6 +400,33 @@ def main(argv: list[str] | None = None) -> int:
                 args.dependency, json.loads(args.verify_command_json) if args.verify_command_json else None,
                 args.local_only, args.workspace_root, kind=args.kind, role=args.role,
                 read_scope=args.read_allow, inputs=args.input, outputs=args.output)
+        elif args.task_command == "context":
+            from task_context import context
+            value = context(repo,args.id)
+        elif args.task_command == "note":
+            from task_observations import note
+            value = note(repo,args.id,args.event_id,args.kind,args.reason)
+        elif args.task_command == "attest":
+            from task_observations import attest
+            value = attest(repo,args.id,args.event_id,args.human_interventions,args.rework,
+                args.evidence_digest,args.reason,args.coverage_start)
+        elif args.task_command == "handoff":
+            from task import handoff
+            store = TaskStore(repo,initialize=False)
+            row = store.load(args.id)
+            root = Path(row["worktree"]).resolve()
+            if row.get("host_platform") != os.name:
+                raise ValueError("Use the registered native handoff host")
+            common = Path(git(root,"rev-parse","--path-format=absolute","--git-common-dir").decode().strip()).resolve()
+            if common != store.common:
+                raise ValueError("Registered handoff worktree belongs to another repository")
+            if any(value is not None and (type(value) is not int or value < 0)
+                   for value in (args.human_interventions,args.rework)):
+                raise ValueError("Explicit handoff counters must be nonnegative integers or omitted")
+            if args.evidence_digest and not args.observations_complete:
+                raise ValueError("--evidence-digest requires --observations-complete")
+            value = handoff(args.id,args.evidence,args.remaining,args.human_interventions,args.rework,root,
+                observations_complete=args.observations_complete,observation_digest=args.evidence_digest)
         elif args.task_command == "lease":
             from task_contract import set_lease_state
             store = TaskStore(repo)
@@ -420,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:
                 "resume", "--repo", str(repo), "--id", args.id], cwd=repo).returncode
         print(json.dumps(value, indent=2, ensure_ascii=False))
         return 0 if value.get("status") not in {"BLOCKED","FAIL"} else 2
-    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError, subprocess.SubprocessError) as error:
         print(json.dumps({"status": "BLOCKED", "reason": str(error)}))
         return 2
 
