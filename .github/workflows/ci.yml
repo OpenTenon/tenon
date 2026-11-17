@@ -80,23 +80,51 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: '3.13'
-      - run: python scripts/engineering.py verify --group tools
+      - run: python scripts/engineering.py verify --group tools --shard-index 0 --shard-count 2
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: always()
         with:
-          name: verification-windows
+          name: verification-windows-shard-0-attempt-${{ github.run_attempt }}
+          path: build/verification/
+          retention-days: 14
+
+  tools-windows-extra:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: '3.13'
+      - run: python scripts/engineering.py verify --group tools --shard-index 1 --shard-count 2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: always()
+        with:
+          name: verification-windows-shard-1-attempt-${{ github.run_attempt }}
           path: build/verification/
           retention-days: 14
 
   required:
     name: ci-required
     if: always()
-    needs: [format, check, sim, tools-windows]
+    needs: [format, check, sim, tools-windows, tools-windows-extra]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
+    env:
+      CI_NEEDS: ${{ toJSON(needs) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Require every job to succeed
-        env:
-          CI_NEEDS: ${{ toJSON(needs) }}
         run: python3 scripts/ci_gate.py
+      - name: Download Windows shard 0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: verification-windows-shard-0-attempt-${{ github.run_attempt }}
+          path: build/ci-windows/0
+      - name: Download Windows shard 1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: verification-windows-shard-1-attempt-${{ github.run_attempt }}
+          path: build/ci-windows/1
+      - name: Require complete current Windows evidence
+        run: python3 scripts/ci_gate.py --windows-shards build/ci-windows

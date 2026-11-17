@@ -28,14 +28,25 @@ class ContractTests(unittest.TestCase):
         self.pins = json.loads((ROOT / 'tools/toolchain.json').read_text())
         self.workflow = {'permissions': {'contents': 'read'},
                          'on': {'push': {'branches': ['dev','main']}, 'pull_request': {'branches': ['dev','main']}, 'workflow_dispatch': None},
-                         'jobs': {name: {'runs-on': 'windows-2022' if name == 'tools-windows' else self.pins['linux_runner'],
+                         'jobs': {name: {'runs-on': 'windows-2022' if name in ('tools-windows','tools-windows-extra') else self.pins['linux_runner'],
                                          'timeout-minutes': 15, 'steps': [{'uses': 'actions/checkout@' + '1' * 40}]}
                                   for name in REQUIRED_JOBS | {'required'}}}
         self.workflow['jobs']['required'].update(name='ci-required', needs=sorted(REQUIRED_JOBS), **{'if':'always()'})
         for name, job in self.workflow['jobs'].items():
-            command = 'python3 scripts/ci_gate.py' if name == 'required' else 'python scripts/engineering.py verify --group tools' if name == 'tools-windows' else 'python3 scripts/engineering.py verify --group ' + name
+            command = 'python3 scripts/ci_gate.py' if name == 'required' else 'python scripts/engineering.py verify --group tools' if name in ('tools-windows','tools-windows-extra') else 'python3 scripts/engineering.py verify --group ' + name
             job['steps'].append({'run': command})
         self.workflow['jobs']['check']['steps'].append({'run':'python3 scripts/ci_contract.py --root .'})
+        for index, name in enumerate(('tools-windows','tools-windows-extra')):
+            self.workflow['jobs'][name]['steps'][-1]['run'] += ' --shard-index ' + str(index) + ' --shard-count 2'
+            self.workflow['jobs'][name]['steps'].append({'uses':'actions/upload-artifact@'+'2'*40,'if':'always()',
+                'with':{'name':ci_contract.windows_artifact(index),'path':'build/verification/'}})
+        gate = self.workflow['jobs']['required']
+        gate['env'] = {'CI_NEEDS':'$'+'{{ toJSON(needs) }}'}
+        for index in (0,1):
+            gate['steps'].append({'uses':'actions/download-artifact@'+'3'*40,
+                'with':{'name':ci_contract.windows_artifact(index),'path':'build/ci-windows/'+str(index)}})
+        gate['steps'].append({'run':'python3 scripts/ci_gate.py --windows-shards build/ci-windows'})
+
 
     def test_current_contract_is_valid_and_missing_or_extra_gate_members_fail(self):
         self.assertEqual(ci_contract.check_data(self.workflow, self.rules, self.pins), [])
@@ -75,6 +86,41 @@ class ContractTests(unittest.TestCase):
                 rules['dev']['allow_force_pushes'] = True
             with self.subTest(mode=mode):
                 self.assertTrue(ci_contract.check_data(workflow, rules, self.pins))
+
+    def test_shard_bypasses_softening_order_and_stale_artifact_names_fail(self):
+        for mode in ('full-in-windows','wrong-index','wrong-count','wrong-runner','old-upload',
+                     'old-download','soft-download','conditional-download','soft-report',
+                     'missing-report-gate','gate-before-download','external-run','missing-needs-context'):
+            workflow = copy.deepcopy(self.workflow)
+            gate = workflow['jobs']['required']
+            if mode == 'full-in-windows':
+                workflow['jobs']['tools-windows']['steps'][1]['run'] = 'python scripts/engineering.py verify --group tools'
+            elif mode == 'wrong-index':
+                workflow['jobs']['tools-windows-extra']['steps'][1]['run'] = 'python scripts/engineering.py verify --group tools --shard-index 0 --shard-count 2'
+            elif mode == 'wrong-count':
+                workflow['jobs']['tools-windows']['steps'][1]['run'] = 'python scripts/engineering.py verify --group tools --shard-index 0 --shard-count 3'
+            elif mode == 'wrong-runner':
+                workflow['jobs']['tools-windows-extra']['runs-on'] = 'ubuntu-22.04'
+            elif mode == 'old-upload':
+                workflow['jobs']['tools-windows']['steps'][-1]['with']['name'] = 'verification-windows'
+            elif mode == 'old-download':
+                gate['steps'][2]['with']['name'] = 'verification-windows-shard-0-attempt-1'
+            elif mode == 'soft-download':
+                gate['steps'][2]['continue-on-error'] = True
+            elif mode == 'conditional-download':
+                gate['steps'][2]['if'] = 'false'
+            elif mode == 'soft-report':
+                gate['steps'][-1]['continue-on-error'] = True
+            elif mode == 'missing-report-gate':
+                gate['steps'].pop()
+            elif mode == 'gate-before-download':
+                gate['steps'][1],gate['steps'][-1] = gate['steps'][-1],gate['steps'][1]
+            elif mode == 'external-run':
+                gate['steps'][2]['with']['run-id'] = 'previous'
+            else:
+                gate['env'].pop('CI_NEEDS')
+            with self.subTest(mode=mode):
+                self.assertTrue(ci_contract.check_data(workflow,self.rules,self.pins))
 
     def test_controller_inventory_is_read_without_executing_target_code(self):
         text = "raise RuntimeError('must not execute')\nREQUIRED_JOBS = {'new-job'}\n"

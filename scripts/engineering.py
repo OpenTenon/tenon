@@ -130,8 +130,16 @@ def required_ids(group: str) -> set[str]:
 
 
 def _verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
-           timeout: float = 900, root: Path = ROOT) -> tuple[Path, dict]:
-    summary = new_summary(root, "pdk-verification" if pdk else "verification")
+           timeout: float = 900, root: Path = ROOT, *,
+           shard_index: int | None = None, shard_count: int | None = None) -> tuple[Path, dict]:
+    from engineering_tests import shard_options
+    partial = shard_options(shard_index, shard_count)
+    if partial and (group != "tools" or pdk):
+        raise ValueError("Sharding is limited to the native tools group")
+    summary = new_summary(root, "verification-partial" if partial else "pdk-verification" if pdk else "verification")
+    summary["partial"] = partial
+    if partial:
+        summary["shard"] = {"index": shard_index, "count": shard_count}
     report = root / "build" / "verification" / summary["run_id"] / "summary.json"
     report.parent.mkdir(parents=True, exist_ok=False)
     summary["group"] = "pdk" if pdk else group
@@ -153,6 +161,8 @@ def _verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
             "tools-test": [sys.executable, "scripts/engineering_tests.py", "--report", str(report.parent / "tools-test.json")],
             "skill-check": [sys.executable, "scripts/repo_policy.py", "--skills-only"],
         }
+        if target == "tools-test" and partial:
+            native_commands[target] += ["--shard-index", str(shard_index), "--shard-count", str(shard_count)]
         command = native_commands.get(target, make_command(target))
         required_tools = (["git"] if target in native_commands else ["make", *TARGET_TOOLS.get(target, [])])
         if pdk:
@@ -185,10 +195,14 @@ def _verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
 
 
 def verify(group: str = "all", pdk: str | None = None, dry_run: bool = False,
-           timeout: float = 900, root: Path = ROOT) -> tuple[Path, dict]:
+           timeout: float = 900, root: Path = ROOT, *,
+           shard_index: int | None = None, shard_count: int | None = None) -> tuple[Path, dict]:
+    from engineering_tests import shard_options
+    if shard_options(shard_index, shard_count) and (group != "tools" or pdk):
+        raise ValueError("Sharding is limited to the native tools group")
     from task_store import resource_lease
     with resource_lease(root,"verification"):
-        return _verify(group,pdk,dry_run,timeout,root)
+        return _verify(group,pdk,dry_run,timeout,root,shard_index=shard_index,shard_count=shard_count)
 
 
 def affected_pdks(paths: list[str]) -> set[str]:
@@ -264,6 +278,8 @@ def main() -> int:
         command.add_argument("--timeout", type=float, default=900)
         if name == "verify":
             command.add_argument("--group", choices=("all", *GROUP_TARGETS), default="all")
+            command.add_argument("--shard-index", type=int, choices=(0, 1))
+            command.add_argument("--shard-count", type=int, choices=(2,))
         else:
             command.add_argument("--pdk", choices=PDKS, required=True)
     release = commands.add_parser("release-check")
@@ -289,7 +305,8 @@ def main() -> int:
             if args.timeout <= 0:
                 parser.error("--timeout must be positive")
             path, result = verify(getattr(args, "group", "all"), getattr(args, "pdk", None),
-                                  args.dry_run, args.timeout)
+                                  args.dry_run, args.timeout, shard_index=getattr(args, "shard_index", None),
+                                  shard_count=getattr(args, "shard_count", None))
         print(f"{result['status']}: {path}")
         for item in result["checks"]:
             print(f"  {item['status']}: {item['id']}")
