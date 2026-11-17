@@ -78,16 +78,20 @@ def start(identifier: str, goal: str, allowed: list[str], checks: list[str], dep
 
 
 def handoff(identifier: str, evidence: list[Path], remaining: list[str], interventions: int | None,
-            rework: int | None, root: Path = ROOT) -> dict:
+            rework: int | None, root: Path = ROOT, *, observations_complete: bool = False,
+            observation_digest: str | None = None) -> dict:
     store = TaskStore(root)
     if store.load(identifier).get("kind") == "engineering":
         with allocation_lock(store) as ticket:
-            return _handoff(identifier, evidence, remaining, interventions, rework, root, store, ticket)
-    return _handoff(identifier, evidence, remaining, interventions, rework, root, store)
+            return _handoff(identifier, evidence, remaining, interventions, rework, root, store, ticket,
+                            observations_complete=observations_complete, observation_digest=observation_digest)
+    return _handoff(identifier, evidence, remaining, interventions, rework, root, store,
+                    observations_complete=observations_complete, observation_digest=observation_digest)
 
 
 def _handoff(identifier: str, evidence: list[Path], remaining: list[str], interventions: int | None,
-             rework: int | None, root: Path, store: TaskStore, allocation: Allocation | None = None) -> dict:
+             rework: int | None, root: Path, store: TaskStore, allocation: Allocation | None = None, *,
+             observations_complete: bool = False, observation_digest: str | None = None) -> dict:
     value = store.load(identifier)
     observed = source_state(root) if value.get("kind") == "engineering" else None
     errors = scope_errors(value, root)
@@ -133,8 +137,22 @@ def _handoff(identifier: str, evidence: list[Path], remaining: list[str], interv
     if value.get("kind") == "engineering":
         fields = {name: value[name] for name in ("status", "handoff_at", "changed_files", "source", "evidence", "remaining",
             "blockers", "human_interventions", "rework_count", "output_contract", "execution_lease")}
-        return store.mutate(identifier,lambda current:{**current,**fields},"handoff")
-    return store.mutate(identifier,lambda current:{**current,**value},"handoff")
+        def merge(current):
+            from task_observations import handoff_declaration, manual_summary, source_reference
+            merged = {**current, **fields}
+            merged = handoff_declaration(current, merged, source_reference(root, current),
+                complete=observations_complete, expected_digest=observation_digest)
+            merged["output_contract"]["observation_completeness"] = manual_summary(merged)
+            return merged
+        return store.mutate(identifier,merge,"handoff")
+    def merge_legacy(current):
+        from task_observations import handoff_declaration, source_reference
+        # Do not overwrite concurrently recorded history/observations with the old snapshot.
+        fields = {name:value[name] for name in ("status","handoff_at","changed_files","source","evidence",
+            "remaining","blockers","human_interventions","rework_count")}
+        return handoff_declaration(current,{**current,**fields},source_reference(root,current),
+            complete=observations_complete,expected_digest=observation_digest)
+    return store.mutate(identifier,merge_legacy,"handoff")
 
 
 def cleanup_check(root: Path = ROOT) -> list[str]:

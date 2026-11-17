@@ -148,13 +148,15 @@ def lease_is_held(path: Path) -> bool:
 
 
 class TaskStore:
-    def __init__(self, repo: Path):
+    def __init__(self, repo: Path, *, initialize: bool = True):
         self.repo = repo.resolve()
         raw = git(self.repo,"rev-parse","--path-format=absolute","--git-common-dir").decode().strip()
         self.common = Path(raw).resolve()
         self.root = self.common / "tenon"
         identity = self.root / "repository.json"
         if not identity.exists():
+            if not initialize:
+                raise FileNotFoundError("The repository has no registered runtime identity")
             self.root.mkdir(parents=True,exist_ok=True)
             with FileLease(self.root / "locks/repository.lock"):
                 if not identity.exists():
@@ -194,7 +196,8 @@ class TaskStore:
                 raise ValueError("Foreign task inbox event")
             attempt = event["attempt"]
             attempts = value.setdefault("verification_attempts",[])
-            if not any(item["run_id"]==attempt["run_id"] for item in attempts):
+            # Identity agreement alone cannot discard a contradictory observation.
+            if not any(item == attempt for item in attempts):
                 attempts.append(attempt)
         return value
 
@@ -205,7 +208,8 @@ class TaskStore:
     def load(self, task_id: str) -> dict:
         return self.fold_inbox(copy.deepcopy(self._load(task_id)),self.inbox(task_id))
 
-    def mutate(self, task_id: str, change, action: str = "update", create: bool = False) -> dict:
+    def mutate(self, task_id: str, change, action: str = "update", create: bool = False, *,
+               skip_unchanged: bool = False) -> dict:
         path = self.path(task_id)
         with FileLease(self.root / "locks" / (identifier(task_id)+".lock")):
             try:
@@ -218,8 +222,13 @@ class TaskStore:
                 value = {"schema_version":2,"repo_id":self.repo_id,"task_id":task_id,"revision":0}
             pending = self.inbox(task_id)
             candidate = self.fold_inbox(copy.deepcopy(value),pending)
+            before_change = copy.deepcopy(candidate) if skip_unchanged else None
             result = change(candidate)
             value = result if result is not None else candidate
+            if skip_unchanged and not create and value == before_change:
+                # No own change: leave task/journal AND every inbox file untouched.
+                # A later real transaction can durably fold and drain that history.
+                return copy.deepcopy(value)
             value.update(schema_version=2,repo_id=self.repo_id,task_id=task_id,
                          revision=value.get("revision",0)+1,updated_at=utc_now())
             path.parent.mkdir(parents=True,exist_ok=True)

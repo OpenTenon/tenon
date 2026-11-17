@@ -57,6 +57,76 @@ setup intent and full contract before creation; repeating the same command adopt
 only its exact unchanged clean worktree at the same dev base. Changed contracts,
 new work or an advanced base remain inspectable blockers.
 
+## Task context and attributed observations
+
+`git tenon task context --id TASK` reads the registered task from shared snapshots,
+complete journal records and inboxes without constructing runtime state. It never
+initializes a repository, contacts origin, repairs a journal or drains an inbox.
+The compact JSON includes the goal, original/current bases, scopes, recorded
+dependencies and checks, live or historical source identity, source-matched
+evidence state, lease/capacity observations, references and a specific next argv.
+An OBSERVED result means the observation completed; it does not grant source
+editing authority or imply delivery, release or physical signoff. Missing, stale,
+foreign-host and verified historical archive states remain distinct.
+
+`git tenon task note --id TASK --event-id EVENT --kind intervention|rework
+--reason TEXT` records an explicit attributed fact. An intervention is observed
+human action needed to unblock, fix or review after initial authorization.
+Initial authorization, AI coordination and human main promotion are not
+automatically interventions. Rework is an explicitly observed corrective
+iteration; it is separate from verification failures, CI waits and automatic
+transport retries. No model or trace classifier invents these counts.
+
+`task attest` requires an event ID, both explicit `--human-interventions N` and
+`--rework N` totals, `--evidence-digest` from current context, a reason, and
+`--coverage-start task-start|tracking-start`. It binds the event set, source
+evidence, phase and coverage start. A tracking-only declaration is not a
+whole-task total. New manual facts invalidate the old completeness marker until
+explicitly re-attested. Unknown totals never default to zero; older whole-task
+declarations and new event coverage are not automatically added together. The
+old explicit integer/None handoff API remains supported and its declarations
+are labeled separately from a new completeness attestation. No migration fills
+the original unknown records with zeros.
+
+Manual events and machine observations live in an additive `observations_v1`
+namespace within task v2. Same event ID and canonical payload is a strict task/
+journal no-op; a different payload is atomically rejected. The optional no-op
+transaction leaves a pending verification inbox intact. A real subsequent
+transaction folds and drains it, suppressing only exact duplicate dictionaries;
+contradictory observations with the same run ID remain available for unknown/
+ambiguous classification. Default transaction revision behavior is unchanged.
+
+The stable `task handoff` command routes to the registered worktree and reuses
+the existing scope, full-evidence, declared-analysis and source-stability
+contracts. Optional `--observations-complete --evidence-digest DIGEST` adds a
+source-bound explicit completeness marker and requires both totals. It does not
+replace acceptance evidence or make an analysis handoff eligible to deliver code.
+Metadata-only note/attest can run after cleanup, without reacquiring a writer
+slot or recreating a branch/worktree. Such later facts remain in the shared
+registry/journal; an earlier immutable archive remains its original snapshot.
+
+Queue v1 adds a small owned outbox, not an external service. A logical operation
+persists its start and an owner/generation/input-candidate/ordinal identity
+before execution. Its result is atomically written with queue state/attempt
+changes, then idempotently mirrored into the task namespace. Restart reuses an
+unfinished identity. A start whose first mirror fails has not consumed its
+execution ordinal. Every accepted base merge is retained in a derivation chain;
+recovery, results and read-only pending-event views require every hop's exact
+parents and durable token, including multiple dev advancements. An ancestor
+relationship alone never admits an unknown new commit. Invalid pending events
+are diagnosed rather than counted, and read-only views do not drain them.
+A closed result awaiting mirror delivery is
+delivered without executing that operation again. Read-only context merges
+bound pending events but never drains them.
+
+Observed starts/results, CI waits, transient retries and resource retries are
+separate. Normal CI polling is a wait, even if an old error_category remains in
+the queue. Only the current caught transient/resource exception is a fault
+retry. The legacy queue attempts field remains a generic iteration counter.
+Machine coverage is limited to queued operations from its explicit starting
+point; foreground and older incomplete history do not become invented whole-task
+totals. An unfinished attempt or conflicting facts keep covered totals unknown.
+
 ## Background queue and host recovery
 
 The installed entry exposes `task deliver --id TASK`, `task submit --id TASK`,

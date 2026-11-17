@@ -52,7 +52,9 @@ def distribution(values, total=None):
 
 
 def _counter(tasks, name):
-    values = [task.get(name) for task in tasks if type(task.get(name)) is int and task[name] >= 0]
+    from task_observations import qualified_counter
+    observed = [qualified_counter(task, name) for task in tasks]
+    values = [value for value in observed if value is not None]
     return {"samples": len(values), "unknown": len(tasks) - len(values), "known_total": sum(values) if values else None}
 
 
@@ -183,6 +185,12 @@ def summarize(tasks, events=None, queues=None, observations=None, as_of=None, wo
                "resource_completeness_unknown": bool(unknown_resources),
                "recorded_remote_deleted": task.get("cleanup", {}).get("remote_deleted"),
                "actor_lease": task.get("execution_lease"), "started_at": task.get("started_at"), "delivered_at": delivered}
+        from task_observations import manual_summary, machine_summary
+        try:
+            row["manual_observations_v1"] = manual_summary(task)
+            row["machine_observations_v1"] = machine_summary(task, queue)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            row["observation_diagnostics"] = ["Task observation namespace is invalid"]
         result_rows.append(row)
     delivered_count = sum(row["delivered"] for row in result_rows)
     worker = copy.deepcopy(worker or {})
