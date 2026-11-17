@@ -446,17 +446,31 @@ They always remain non-signoff. This workflow does not fix missing foundry abstr
 
 ## Skills and evaluation
 
-Keep the five narrow repository Skills; scripts own deterministic logic. The default
-evaluation command makes no model calls. Explicit execution still uses ten cases,
-three repetitions and a caller-selected existing model/provider. Evaluation Git
-fixtures live in an owned external temporary directory, not inside a worktree.
-Apps/plugins/browser/computer integrations and configured MCP servers are disabled
-for each read-only evaluation invocation; global account configuration is unchanged.
+Keep the five narrow repository Skills; scripts own deterministic logic. Use the
+stable entry for full doctor/context, source-qualified handoff and attributed
+note/attest operations. Context is read-only and grants no write authority;
+historical/stale source and partial Windows reports cannot replace current full
+evidence. Explicitly observed events are idempotent; unknown totals remain unknown.
 
-Raw traces, CLI/model/usage and results persist in shared evaluations/. Outcome
-assessment requires fixture assertions, unchanged inputs and structured grounded
-decisions; keywords alone are insufficient. Semantic review remains a human step.
-Evaluations do not opt into task delivery and never use production GitHub writes.
+`python3 scripts/repo_policy.py --skills-only` statically checks metadata,
+references and nested documented command interfaces without running mutations.
+`python3 scripts/skill_eval.py` remains a zero-model-call plan: original ten cases,
+eight earlier regressions and additive phase2 scenarios retain their IDs.
+
+`python3 scripts/skill_offline.py` runs independent local Git/worktree/archive
+fixtures, checks real outcomes and produces build/verification/skill-offline/results.json.
+It separately checks an existing CLI's configuration-only base/profile/project
+layers in a fresh child environment. No model/provider call, service startup,
+credential copy, installation or real GitHub write occurs. Offline PASS does not
+measure LLM routing accuracy; model metrics remain NOT_RUN/null. Unavailable
+configuration capability remains explicitly NOT_RUN, never silently passing.
+
+Strict real-model execution still requires explicit model/call/token limits and
+blocks before invoking a CLI that cannot enforce a hard total token ceiling.
+There is no automatic observed-budget fallback. Read
+[Skill governance](SKILL-GOVERNANCE.md) and the
+[evaluation reference](../../.agents/skills/tenon-verify/references/evaluation.md)
+for fixture qualifications, recovery and the opt-in observed-mode limitations.
 
 ## Versions, caches and metrics
 

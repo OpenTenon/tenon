@@ -66,7 +66,7 @@ def assess_outcome(trace: dict, before: dict, after: dict, assertions: list[dict
 
 
 def configured_mcp_overrides(fixture: Path | None = None, cli: list[str] | None = None,
-                             profile: str | None = None) -> list[str]:
+                             profile: str | None = None, *, env: dict | None = None) -> list[str]:
     """Resolve exact-CWD base/profile/project layers, then verify every server is disabled.
 
     mcp/list is a config-only operation. Inventory payloads can contain credentials:
@@ -77,7 +77,7 @@ def configured_mcp_overrides(fixture: Path | None = None, cli: list[str] | None 
     prefix = [*cli, *(["--profile", profile] if profile else [])]
     def inventory(overrides):
         result = subprocess.run([*prefix, *overrides, "mcp", "list", "--json"], cwd=fixture,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20, check=False)
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20, check=False, env=env)
         if result.returncode:
             raise ValueError("Cannot resolve effective fixture MCP configuration; no model call is allowed")
         try:
@@ -164,6 +164,7 @@ def isolate(destination: Path, *, writable: bool = False) -> Path:
 
 
 IMPLEMENTATION_CASES = {"implementation-verify", "implementation-scope-boundary"}
+OFFLINE_SCENARIOS = {"scope-and-local-implementation", "partial-evidence", "context-and-events", "cleanup-recovery"}
 EXPECTED_CODES = [(0,"PASS"),(2,"BLOCKED"),(1,"FAIL"),(7,"FAIL"),(124,"FAIL"),(-1,"FAIL")]
 
 
@@ -185,6 +186,8 @@ def load_cases(root: Path = ROOT) -> list[dict]:
                 raise ValueError("Writable cases require a concrete fixture oracle: "+name)
             if case.get("decision") is not None and case["decision"] not in {"PLAN","READY","BLOCKED","ANSWER"}:
                 raise ValueError("Unknown expected decision: "+name)
+            if case.get("offline_scenario") is not None and case["offline_scenario"] not in OFFLINE_SCENARIOS:
+                raise ValueError("Unknown offline fixture oracle: "+name)
             allowed_paths = case.get("allowed_paths",[])
             if not isinstance(allowed_paths,list) or (case.get("mode")=="workspace-write" and not allowed_paths):
                 raise ValueError("Writable evaluation cases require a file scope")
@@ -245,17 +248,23 @@ class EvaluationBudget:
 def codex_command(executable: str | None = None) -> list[str]:
     """Use an argv-safe native/Node entry; never pass model prompts through a batch shell."""
     resolved = shutil.which(executable or "codex")
-    if not resolved:
-        raise ValueError("An existing Codex CLI is required; nothing is installed automatically")
-    path = Path(resolved)
-    if os.name!="nt" or path.suffix.lower()==".exe":
+    path = Path(resolved) if resolved else None
+    if path and (os.name != "nt" or path.suffix.lower() == ".exe"):
         return [str(path)]
-    node = shutil.which("node")
-    for relative in ("node_modules/@openai/codex/bin/codex.js","global/5/node_modules/@openai/codex/bin/codex.js"):
-        script = path.parent/relative
-        if node and Path(node).suffix.lower()==".exe" and script.is_file():
-            return [node,str(script)]
-    raise ValueError("A Windows batch shim cannot safely receive prompts; provide --codex-bin with a native executable")
+    if os.name == "nt" and not executable:
+        # Desktop ships a native CLI even when PATH resolves a stale pnpm shell shim.
+        local = os.environ.get("LOCALAPPDATA")
+        candidates = list((Path(local)/"OpenAI/Codex/bin").glob("*/codex.exe")) if local else []
+        candidates = [candidate for candidate in candidates if candidate.is_file()]
+        if candidates:
+            return [str(max(candidates, key=lambda candidate: candidate.stat().st_mtime_ns))]
+    if path:
+        node = shutil.which("node")
+        for relative in ("node_modules/@openai/codex/bin/codex.js","global/5/node_modules/@openai/codex/bin/codex.js"):
+            script = path.parent/relative
+            if node and Path(node).suffix.lower() == ".exe" and script.is_file():
+                return [node, str(script)]
+    raise ValueError("No safe existing Codex entry; select --codex-bin with a native executable; nothing is installed")
 
 
 def codex_version(cli: list[str]) -> str:
@@ -399,7 +408,8 @@ def main():
     if not args.execute:
         print(json.dumps({"status":"NOT_RUN", "model_calls":0, "cases":len(cases),
                           "planned_runs":len(cases) * args.repeats, "model":args.model,
-                          "budget_mode":args.budget_mode}, indent=2))
+                          "budget_mode":args.budget_mode, "model_metrics":{"status":"NOT_RUN","trigger_accuracy":None,"completion_rate":None},
+                          "offline_command":[sys.executable,"scripts/skill_offline.py"]}, indent=2))
         return 0
     if not args.model or args.max_calls is None or args.token_budget is None:
         parser.error("--execute requires --model, --max-calls and --token-budget")

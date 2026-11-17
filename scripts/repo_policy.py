@@ -22,6 +22,137 @@ def check_skills(root=ROOT):
     targets = set(re.findall(r"^([A-Za-z][\w-]*)\s*:", make, re.M))
     contracts = {}
 
+    def parser_contract(source):
+        """Interpret only argparse declarations, never import/execute the entry."""
+        import argparse
+        import contextlib
+        import io
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        constants = {}
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                try:
+                    value = ast.literal_eval(node.value)
+                except (ValueError, TypeError):
+                    if isinstance(node.value, ast.Dict) and all(isinstance(key, ast.Constant) for key in node.value.keys):
+                        value = [key.value for key in node.value.keys]
+                    else:
+                        continue
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        constants[target.id] = value
+        class InvalidCommand(Exception):
+            pass
+        class Contract(argparse.ArgumentParser):
+            def error(self, message):
+                raise InvalidCommand(message)
+            def exit(self, status=0, message=None):
+                raise InvalidCommand(message or "help-only command")
+        def build(function):
+            env = dict(constants)
+            roots = []
+            def literal(node):
+                if isinstance(node, ast.Name):
+                    return env[node.id]
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "sorted"
+                        and len(node.args) == 1 and not node.keywords):
+                    values = literal(node.args[0])
+                    if isinstance(values, (list, tuple, set, dict)):
+                        return sorted(values)
+                    raise ValueError("sorted choices must contain static values")
+                if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                    result = []
+                    for item in node.elts:
+                        result.extend(literal(item.value) if isinstance(item, ast.Starred) else [literal(item)])
+                    return result
+                if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "argparse":
+                    return getattr(argparse, node.attr)
+                return ast.literal_eval(node)
+            def expression(node):
+                if isinstance(node, ast.Name):
+                    return env.get(node.id)
+                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                    return None
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == "argparse" and node.func.attr == "ArgumentParser":
+                    value = Contract(add_help=True, allow_abbrev=False)
+                    roots.append(value)
+                    return value
+                owner = expression(node.func.value)
+                method = node.func.attr
+                if method not in {"add_parser", "add_subparsers", "add_argument"} or owner is None:
+                    return None
+                args = [literal(arg) for arg in node.args]
+                kwargs = {}
+                for item in node.keywords:
+                    if item.arg in {"action", "nargs", "choices", "dest", "type"}:
+                        try:
+                            kwargs[item.arg] = {"int": int, "float": float, "str": str}.get(item.value.id, str) if item.arg == "type" and isinstance(item.value, ast.Name) else literal(item.value)
+                        except (KeyError, ValueError, TypeError):
+                            # Unknown dynamic declarations fail closed when used; no imports/eval.
+                            if item.arg == "choices":
+                                # An unresolved choices expression must reject any provided value,
+                                # while documentation that does not use this option can still parse.
+                                kwargs["choices"] = ()
+                            else:
+                                raise ValueError("Unsupported argparse declaration in " + str(source))
+                if method == "add_parser":
+                    kwargs.update(allow_abbrev=False)
+                # Commands are documented as templates; required values may be omitted.
+                # Provided names/options/choices/arity must still parse in their exact scope.
+                return getattr(owner, method)(*args, **kwargs)
+            def statements(nodes):
+                for node in nodes:
+                    if isinstance(node, ast.Assign):
+                        try:
+                            value = expression(node.value)
+                            if value is None:
+                                value = literal(node.value)
+                        except (KeyError, ValueError, TypeError):
+                            continue
+                        for target in node.targets:
+                            if isinstance(target, ast.Name):
+                                env[target.id] = value
+                    elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                        expression(node.value)
+                    elif isinstance(node, ast.For) and isinstance(node.target, ast.Name):
+                        try:
+                            values = literal(node.iter)
+                        except (KeyError, ValueError, TypeError):
+                            continue
+                        if isinstance(values, (list, tuple, set)) and len(values) < 100:
+                            for value in values:
+                                env[node.target.id] = value
+                                statements(node.body)
+                    elif isinstance(node, ast.If):
+                        test = node.test
+                        if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], (ast.Eq, ast.NotEq)):
+                            try:
+                                equal = literal(test.left) == literal(test.comparators[0])
+                            except (KeyError, ValueError, TypeError):
+                                continue
+                            statements(node.body if equal == isinstance(test.ops[0], ast.Eq) else node.orelse)
+            statements(function.body)
+            return roots
+        roots = [root for function in tree.body if isinstance(function, ast.FunctionDef)
+                 for root in build(function)]
+        if len(roots) != 1:
+            raise ValueError("Expected one statically declared argparse interface in " + str(source))
+        parser = roots[0]
+        if source.name == "tenon.py":
+            subparsers = next(action for action in parser._actions if isinstance(action, argparse._SubParsersAction))
+            # Stable maintenance forwards argv to this exact local entry.
+            subparsers.choices["maintenance"] = parser_contract(source.with_name("maintenance.py"))
+        def validate(argv):
+            with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    parser.parse_args(argv)
+                except InvalidCommand as error:
+                    return str(error)
+            return None
+        # The delegating branch above needs the parser itself, not its validator.
+        parser.tenon_validate = validate
+        return parser
+
     def command_error(command):
         try:
             argv = shlex.split(command)
@@ -29,31 +160,20 @@ def check_skills(root=ROOT):
             return "invalid command quoting"
         if len(argv) >= 2 and argv[0] == "make":
             return None if argv[1] in targets else "unknown Make target " + argv[1]
-        if len(argv) >= 2 and argv[0] in {"python", "python3"} and argv[1].endswith(".py"):
-            source = (root / argv[1]).resolve()
+        stable = argv[:2] == ["git", "tenon"]
+        if stable or (len(argv) >= 2 and argv[0] in {"python", "python3"} and argv[1].endswith(".py")):
+            entry = "scripts/tenon.py" if stable else argv[1]
+            source = (root / entry).resolve()
             if not source.is_relative_to(root.resolve()) or not source.is_file():
-                return "missing/outside Python entry " + argv[1]
-            if source not in contracts:
-                tree = ast.parse(source.read_text(encoding="utf-8"))
-                names = set()
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                        if node.func.attr in {"add_parser", "add_argument"}:
-                            names.update(arg.value for arg in node.args if isinstance(arg, ast.Constant) and isinstance(arg.value, str))
-                            for option in node.keywords:
-                                if option.arg == "choices" and isinstance(option.value, (ast.List, ast.Tuple, ast.Set)):
-                                    names.update(item.value for item in option.value.elts if isinstance(item, ast.Constant) and isinstance(item.value, str))
-                    if (isinstance(node, ast.For) and isinstance(node.target, ast.Name)
-                            and isinstance(node.iter, (ast.List, ast.Tuple, ast.Set))
-                            and all(isinstance(item, ast.Constant) and isinstance(item.value, str) for item in node.iter.elts)):
-                        for call in (child for statement in node.body for child in ast.walk(statement)):
-                            if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
-                                    and call.func.attr in {"add_parser", "add_argument"} and call.args
-                                    and isinstance(call.args[0], ast.Name) and call.args[0].id == node.target.id):
-                                names.update(item.value for item in node.iter.elts)
-                contracts[source] = names
-            if len(argv) >= 3 and argv[2] not in contracts[source]:
-                return "unknown Python command/option " + argv[2]
+                return "missing/outside Python entry " + entry
+            try:
+                if source not in contracts:
+                    contracts[source] = parser_contract(source)
+                problem = contracts[source].tenon_validate(argv[2:])
+                if problem:
+                    return ("invalid stable command " if stable else "unknown Python command/option ") + problem
+            except (ValueError, TypeError, SyntaxError, AttributeError) as error:
+                return "unverifiable command interface " + str(error)
         return None
 
     for path in sorted((root / ".agents/skills").glob("*/SKILL.md")):
