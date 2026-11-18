@@ -182,11 +182,14 @@ def retained_versions(store: TaskStore, *, reasons=None) -> tuple[set[str], bool
     return retained, unknown_worker
 
 
-def controller_inventory(store: TaskStore, *, exclusive_versions=None) -> dict:
+def controller_inventory(store: TaskStore, *, exclusive_versions=None, include_retention_reasons=False) -> dict:
     from controller_leases import version_observation, redirected, registry_issues
     exclusive_versions = exclusive_versions or {}
     reasons = {}
-    retained, unknown_worker = retained_versions(store, reasons=reasons)
+    if include_retention_reasons:
+        retained, unknown_worker = retained_versions(store, reasons=reasons)
+    else:
+        retained, unknown_worker = retained_versions(store)
     issues = registry_issues(store.root)
     values = []
     controllers = store.root / "controllers"
@@ -214,7 +217,7 @@ def controller_inventory(store: TaskStore, *, exclusive_versions=None) -> dict:
                                     "RETAINED" if directory.name in retained or unknown_worker or recent or issues or lease.get("held") else "RECLAIMABLE",
                            "unclassified": unknown, "lease": lease, "logical_bytes": size,
                            "within_24h": recent, "referenced": directory.name in retained,
-                           "retention_reasons": sorted(set(retention_reasons))})
+                           **({"retention_reasons": sorted(set(retention_reasons))} if include_retention_reasons else {})})
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
             values.append({"path": str(directory), "state": "INVALID", "reason": safe_exception(error)})
     return {"versions": values, "active_worker_identity_unknown": unknown_worker, "lease_registry_issues": issues}
@@ -434,7 +437,7 @@ def audit(repo: Path, live: bool = True, include_source: bool = True) -> dict:
                 result["checks"].append({"id": check_id, "status": "PASS", "files": len(manifest["files"])})
             except (OSError, ValueError, KeyError) as error:
                 result["checks"].append({"id": check_id, "status": "FAIL", "reason": safe_exception(error)})
-    result["controllers"] = controller_inventory(store)
+    result["controllers"] = controller_inventory(store, include_retention_reasons=True)
     states = {item["state"] for item in result["controllers"]["versions"]}
     result["checks"].append({"id": "controllers", "status": "FAIL" if "INVALID" in states else "BLOCKED" if "UNCLASSIFIED" in states else "PASS"})
     if include_source:

@@ -294,7 +294,7 @@ class MonthlyInventoryTests(RepositoryFixture):
                 mock.patch('controller_leases.version_observation',return_value={'state':'IDLE','held':False}), \
                 mock.patch('controller_leases.registry_issues',return_value=[]), \
                 mock.patch.object(maintenance.shutil,'rmtree',side_effect=AssertionError('inventory cannot delete')):
-            value=maintenance.controller_inventory(self.store)
+            value=maintenance.controller_inventory(self.store, include_retention_reasons=True)
         rows={row['commit']:row for row in value['versions']}
         self.assertEqual({row['state'] for row in rows.values()},{'RETAINED'})
         self.assertIn('current-installed',rows[versions[0]]['retention_reasons'])
