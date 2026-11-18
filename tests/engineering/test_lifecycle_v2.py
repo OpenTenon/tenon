@@ -140,14 +140,22 @@ class MergedPRQueryTests(unittest.TestCase):
         self.pull = {"number":7,"merged":True,"base":{"ref":"dev"},
                      "head":{"sha":"candidate","ref":"dev-owned","repo":{"full_name":"fixture/repo"}}}
         backend.pull = mock.Mock(side_effect=lambda number:copy.deepcopy(self.pull))
-        backend.api = mock.Mock(side_effect=lambda endpoint: {"workflow_runs":[copy.deepcopy(self.run)]}
-                                if endpoint.startswith("actions/runs?") else {"jobs":green("candidate","pull_request")["jobs"]})
+        def api(endpoint):
+            if endpoint.startswith("actions/runs?"):
+                return {"workflow_runs":[copy.deepcopy(self.run)]}
+            if "/attempts/" in endpoint:
+                return {"jobs":green("candidate","pull_request")["jobs"]}
+            if endpoint=="actions/runs/42":
+                return copy.deepcopy(self.run)
+            raise AssertionError(endpoint)
+        backend.api = mock.Mock(side_effect=api)
         return backend
 
     def test_closed_pr_with_missing_association_keeps_exact_ci_proof(self):
         backend = self.backend()
         self.assertTrue(ci_green(backend.latest_run("candidate","pull_request",7),"candidate","pull_request"))
-        backend.pull.assert_called_once_with(7)
+        self.assertTrue(backend.pull.call_args_list)
+        self.assertTrue(all(call.args==(7,) for call in backend.pull.call_args_list))
 
     def test_detached_run_rejects_changed_or_unrelated_ownership(self):
         changes = [lambda:self.pull.update(merged=False),
@@ -221,6 +229,93 @@ class OwnedWorktreeFixture(RepositoryFixture):
         self.controller = Lifecycle(self.root,"owned",self.backend)
         self.deploy = mock.patch("task_lifecycle.deploy_controller",return_value=self.store.root/"controller.py")
         self.deploy.start(); self.addCleanup(self.deploy.stop)
+
+
+class CIObservationLifecycleTests(OwnedWorktreeFixture):
+    def timed(self, sha, event, merge_head):
+        from test_ci_observation import snapshot
+        value=snapshot(event,attempt=1 if event=="pull_request" else 2)
+        run_id=42 if event=="pull_request" else 84
+        value["workflow_run"].update(id=run_id,head_sha=sha)
+        value["pull_request"]["merge_commit_sha"]=merge_head
+        for job in value["jobs"]:
+            job.update(run_id=run_id,head_sha=merge_head if event=="pull_request" else sha)
+            if event=="push":
+                job["started_at"]=job["started_at"].replace("10:00:","10:02:")
+                job["completed_at"]=job["completed_at"].replace("10:00:","10:02:")
+        return value
+
+    def prepare_open(self, ambiguous=False, invalid_clock=False):
+        base=self.run_git("rev-parse","HEAD").decode().strip()
+        tree=self.run_git("rev-parse",self.head+"^{tree}").decode().strip()
+        merged=self.run_git("commit-tree",tree,"-p",base,"-p",self.head,"-m","observed dev merge").decode().strip()
+        self.run_git("update-ref","refs/remotes/origin/dev",base)
+        self.store.mutate("owned",lambda value:{**value,"status":"ACTIVE","repository":self.backend.name,
+            "base_sha":base,"delivery":{},"dev_ci":{},"green_dev_sha":None},"prepare-open-observation-fixture")
+        self.backend.value.update(merged=False,state="open",draft=False,mergeable=True,mergeable_state="clean",
+            head={"sha":self.head,"ref":"dev-owned-v2","repo":{"full_name":self.backend.name}},
+            base={"sha":base,"ref":"dev","repo":{"full_name":self.backend.name}},merge_commit_sha=merged)
+        def latest(sha,event,number=None):
+            value=self.timed(sha,event,merged)
+            if invalid_clock:value["jobs"][0]["completed_at"]=None
+            return value
+        self.backend.latest_run=latest
+        def merge(number,head):
+            self.assertEqual((number,head),(7,self.head))
+            self.backend.value.update(merged=True,state="closed")
+            self.run_git("update-ref","refs/remotes/origin/dev",merged)
+            if ambiguous:raise TimeoutError("merge RPC reply lost after provider accepted it")
+        self.backend.merge=merge
+        return merged
+
+    def test_actual_merge_and_dev_acceptance_persist_both_attempt_observations(self):
+        merged=self.prepare_open()
+        with mock.patch.object(self.controller,"verification"),mock.patch.object(self.controller,"cleanup",return_value={"status":"CAPTURED"}), \
+                mock.patch("task_lifecycle.utc_now",side_effect=["2026-11-16T10:00:20Z","2026-11-16T10:02:20Z"]):
+            self.assertEqual(self.controller.deliver()["status"],"CAPTURED")
+        row=self.store.load("owned")
+        pr=row["pr_ci"]["observation"]; dev=row["dev_ci"]["observation"]
+        self.assertEqual(row["status"],"DEV_GREEN")
+        self.assertEqual(row["delivery"]["pr_ci"],row["pr_ci"])
+        self.assertEqual((pr["run_id"],pr["run_attempt"],pr["candidate_head_sha"],pr["provider_head_sha"]),(42,1,self.head,self.head))
+        self.assertEqual((dev["run_id"],dev["run_attempt"],dev["candidate_head_sha"],dev["provider_head_sha"]),(84,2,self.head,merged))
+        journal=[json.loads(line) for line in self.store.path("owned").with_suffix(".jsonl").read_text().splitlines()]
+        intent=next(event["state"] for event in journal if event["action"]=="merge-intent")
+        green_event=next(event["state"] for event in journal if event["action"]=="dev-ci-green")
+        self.assertEqual(intent["pr_ci"],row["pr_ci"]); self.assertEqual(green_event["dev_ci"],row["dev_ci"])
+
+    def test_lost_merge_reply_recovers_the_same_first_pr_observation(self):
+        self.prepare_open(ambiguous=True)
+        with mock.patch.object(self.controller,"verification"),mock.patch("task_lifecycle.utc_now",return_value="2026-11-16T10:00:20Z"):
+            with self.assertRaises(TimeoutError):self.controller.deliver()
+        first=copy.deepcopy(self.store.load("owned")["pr_ci"])
+        with mock.patch.object(self.controller,"cleanup",return_value={"status":"CAPTURED"}), \
+                mock.patch("task_lifecycle.utc_now",return_value="2026-11-16T10:02:20Z"):
+            self.controller.deliver()
+        row=self.store.load("owned")
+        self.assertEqual(row["pr_ci"],first); self.assertEqual(row["delivery"]["pr_ci"],first)
+        self.assertEqual(row["status"],"DEV_GREEN")
+
+    def test_missing_job_clock_is_observation_unknown_not_a_new_delivery_gate(self):
+        self.prepare_open(invalid_clock=True)
+        with mock.patch.object(self.controller,"verification"),mock.patch.object(self.controller,"cleanup",return_value={"status":"CAPTURED"}):
+            self.controller.deliver()
+        row=self.store.load("owned")
+        self.assertEqual(row["status"],"DEV_GREEN")
+        import engineering_metrics
+        result=engineering_metrics.summarize([row])["per_task"][0]["ci_observations"]
+        self.assertIsNone(result["pull_request"]["hosted_span_seconds"])
+        self.assertIsNone(result["merged_dev"]["hosted_span_seconds"])
+
+    def test_already_merged_legacy_acceptance_never_gets_a_new_historical_clock(self):
+        self.store.mutate("owned",lambda value:{**value,"repository":self.backend.name,
+            "pr_ci":{"run_id":42,"head_sha":self.head,"conclusion":"success"},
+            "dev_ci":{"run_id":84,"head_sha":self.head,"conclusion":"success"}},"legacy-accepted-fixture")
+        self.backend.latest_run=lambda sha,event,number=None:self.timed(sha,event,self.head)
+        with mock.patch.object(self.controller,"cleanup",return_value={"status":"CAPTURED"}):
+            self.controller.deliver()
+        row=self.store.load("owned")
+        self.assertNotIn("observation",row["pr_ci"]); self.assertNotIn("observation",row["dev_ci"])
 
 
 class ArchiveAndCleanupTests(OwnedWorktreeFixture):
