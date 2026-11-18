@@ -522,6 +522,41 @@ for fixture qualifications, recovery and the opt-in observed-mode limitations.
 
 ## Versions, caches and metrics
 
+Monthly reports list every recorded dev merge that has not reached CLEANED,
+including older pending work. This is an inspection inventory, not deletion
+permission. Retained failed-drill reports are checked only against this
+repository's persistent scratch, manifest and owner token. CREATING means partial
+setup, not a ready replay/backend. Access denial and malformed or foreign records
+are UNKNOWN; FileNotFoundError records missing metadata without attributing a
+deletion. No inventory path replays, repairs or removes a drill fixture.
+
+Archive capacity uses logical ZIP sizes. Repeated references and only confirmed
+physical file identities are deduplicated; identical hashes in distinct files
+still consume distinct storage. Unknown size or physical identity leaves the
+deduplicated total unknown, with known partial bytes separately named. Private
+archives remain indefinitely retained. Current/previous/executing/task/native
+lease/grace/legacy-unknown reasons describe the existing controller keep decision;
+they never replace its state, fresh checks or lock order. Restore rotation,
+success-only cursor advancement and existing due/retry cadence remain unchanged.
+
+The legacy twenty-delivery flag is a recorded merge-count threshold. A separate
+configuration cohort requires real engineering dev deliveries with qualified
+accepted PR and dev timing, the same verified job runner selectors/layout,
+recorded toolchain-lock key and declared acceptance argv. A PR/rerun is not an
+extra delivery; missing or conflicting evidence is not backfilled. Locks and
+runner labels describe configuration, not actual installed versions or hosted
+images. Twenty equivalent configurations allow only the named observed metrics
+to be summarized; per-metric missing values and correlated CI runs stay explicit.
+Actual tool versions and case inventories remain stronger matching dimensions
+for final same-SHA performance comparisons, without becoming an extra dependency
+for the configuration cohort. Twenty samples are not proof of improvement.
+
+Monthly delivery summaries use the recorded merge month and retain stage samples,
+first full verification outcomes, and known and unknown intervention/rework counts.
+A conflicting PR identity stays excluded from configuration cohorts across all months.
+Capacity includes registered historical supplements under their task operations,
+in addition to the archive directory.
+
 The installed entry exposes `maintenance audit [--offline]`, `maintenance
 restore-check --id TASK`, `maintenance prune-controllers [--apply]`, and
 `maintenance run [--force]`. Archive v1 validation streams payloads and rejects

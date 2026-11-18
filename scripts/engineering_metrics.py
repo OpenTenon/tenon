@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import math
 import os
@@ -140,6 +141,84 @@ def _ci_timings(task):
             "merged_dev":phase_metrics([task.get("dev_ci")],accepted_head=task.get("green_dev_sha"),event="push",**common)}
 
 
+def _configuration_sample(task, ci):
+    """A recorded engineering dev delivery, not a runtime/performance attestation."""
+    delivery = task.get("delivery") if isinstance(task.get("delivery"), dict) else {}
+    identity = (task.get("repository"), delivery.get("number"))
+    facts = {"eligible": False, "reason": None, "repository": identity[0], "pr_number": identity[1],
+             "candidate_head": delivery.get("head_sha"), "signature": None, "configuration": None}
+    if (task.get("kind") != "engineering" or task.get("role") not in {"writer", "integrator"}
+            or task.get("owns_workspace") is False or task.get("delivery_mode") != "auto"
+            or task.get("integration_target") != "dev" or delivery.get("merged") is not True):
+        facts["reason"] = "not-a-recorded-engineering-dev-delivery"
+        return facts
+    if (not isinstance(identity[0], str) or not identity[0] or type(identity[1]) is not int or identity[1] <= 0
+            or not isinstance(delivery.get("head_sha"), str) or not re.fullmatch(r"[0-9a-f]{40}", delivery["head_sha"])):
+        facts["reason"] = "delivery-identity-unknown"
+        return facts
+    contract = task.get("input_contract")
+    argv = contract.get("acceptance_argv") if isinstance(contract, dict) else None
+    lock = task.get("toolchain_key")
+    if (not isinstance(argv, list) or not argv or any(not isinstance(command, list) or not command
+            or any(not isinstance(arg, str) or not arg for arg in command) for command in argv)
+            or not isinstance(lock, str) or not re.fullmatch(r"[0-9a-f]{64}", lock)):
+        facts["reason"] = "recorded-acceptance-or-toolchain-lock-unknown"
+        return facts
+    layouts = {}
+    for phase in ("pull_request", "merged_dev"):
+        value = ci.get(phase, {})
+        if (any(type(value.get(name)) not in {int, float} or not math.isfinite(value[name]) or value[name] < 0
+                for name in ("hosted_span_seconds", "all_job_wall_seconds", "ci_complete_to_confirmation_seconds"))
+                or not isinstance(value.get("runner_labels_by_job"), dict) or not value["runner_labels_by_job"]):
+            facts["reason"] = "accepted-pr-dev-clock-or-runner-layout-unknown"
+            return facts
+        layouts[phase] = value["runner_labels_by_job"]
+    configuration = {"kind": "engineering-dev-accepted-ci-v1", "repository": identity[0],
+                     "acceptance_argv": argv, "recorded_toolchain_lock_sha256": lock, "runner_labels_by_job": layouts}
+    signature = hashlib.sha256(json.dumps(configuration, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    facts.update(eligible=True, reason=None, signature=signature, configuration=copy.deepcopy(configuration))
+    return facts
+
+
+def _configuration_cohorts(rows, *, globally_conflicting_pr_tasks=()):
+    """Do not turn total deliveries, duplicate PRs or missing records into twenty samples."""
+    pending, excluded = {}, []
+    for row in rows:
+        if row["task_id"] in globally_conflicting_pr_tasks:
+            excluded.append({"task_id": row["task_id"], "reason": "duplicate-or-conflicting-pr-delivery"})
+            continue
+        fact = row.get("configuration_sample") or {}
+        if fact.get("eligible") is not True:
+            excluded.append({"task_id": row["task_id"], "reason": fact.get("reason") or "comparison-record-unknown"})
+            continue
+        key = (fact["repository"].casefold(), fact["pr_number"])
+        pending.setdefault(key, []).append(row)
+    cohorts = {}
+    for candidates in pending.values():
+        first = candidates[0]
+        if any(row["task_id"] != first["task_id"] or row["configuration_sample"] != first["configuration_sample"]
+               or row.get("ci_observations") != first.get("ci_observations") for row in candidates[1:]):
+            excluded.extend({"task_id": row["task_id"], "reason": "duplicate-or-conflicting-pr-delivery"} for row in candidates)
+            continue
+        fact = first["configuration_sample"]
+        cohorts.setdefault(fact["signature"], {"signature": fact["signature"], "configuration": fact["configuration"], "rows": []})["rows"].append(first)
+    values = []
+    from ci_observation import TIMINGS
+    for signature, cohort in sorted(cohorts.items()):
+        members = cohort.pop("rows")
+        stages = {phase: {name: distribution([row["ci_observations"][phase].get(name) for row in members], len(members))
+                          for name in TIMINGS} for phase in ("pull_request", "merged_dev")}
+        values.append({**cohort, "deliveries": len(members), "task_ids": sorted(row["task_id"] for row in members),
+                       "configuration_baseline_ready": len(members) >= 20, "stages": stages,
+                       "metric_sample_ready": {phase: {name: stages[phase][name]["samples"] >= 20 for name in TIMINGS}
+                                               for phase in stages},
+                       "distinct_accepted_runs": {phase: len({(row["ci_observations"][phase]["run_id"], row["ci_observations"][phase]["run_attempt"]) for row in members}) for phase in stages}})
+    return {"schema_version": 1, "required_deliveries_per_cohort": 20, "cohorts": values,
+            "eligible_deliveries": sum(value["deliveries"] for value in values), "excluded": excluded,
+            "any_configuration_baseline_ready": any(value["configuration_baseline_ready"] for value in values),
+            "qualification": "Configuration-equivalent recorded dev deliveries only. Locks/selectors are configuration evidence, not actual runtime/image guarantees or proof of improvement. Missing runtime/case dimensions restrict those stronger comparisons, not this configuration cohort; cleanup clocks keep their own sample/missing counts."}
+
+
 def summarize(tasks, events=None, queues=None, observations=None, as_of=None, worker=None, diagnostics=None):
     """Pure reducer. Inputs are snapshots; missing values never become zero successes."""
     now = _as_of(as_of)
@@ -204,6 +283,7 @@ def summarize(tasks, events=None, queues=None, observations=None, as_of=None, wo
                "resource_completeness_unknown": bool(unknown_resources),
                "recorded_remote_deleted": task.get("cleanup", {}).get("remote_deleted"),
                "actor_lease": task.get("execution_lease"), "started_at": task.get("started_at"), "delivered_at": delivered}
+        row["configuration_sample"] = _configuration_sample(task, ci_timings)
         from task_observations import manual_summary, machine_summary
         try:
             row["manual_observations_v1"] = manual_summary(task)
@@ -220,6 +300,8 @@ def summarize(tasks, events=None, queues=None, observations=None, as_of=None, wo
             "delivered_tasks": delivered_count, "cleaned_tasks": sum(row["cleaned_recorded"] for row in result_rows),
             "cleanup_pending_tasks": sum(row["delivered"] and not row["cleaned_recorded"] for row in result_rows),
             "baseline_required_deliveries": 20, "baseline_ready": delivered_count >= 20,
+            "baseline_scope": "recorded-delivery-count-only; not comparable-sample readiness",
+            "delivery_configuration_v1": _configuration_cohorts(result_rows),
             "baseline_note": "Twenty confirmed deliveries are a sample threshold, not proof of improvement",
             "counters": {name: _counter(tasks, name) for name in ("human_interventions", "rework_count")},
             "full_verification_first_pass": {"samples": len(firsts), "unknown_tasks": len(tasks) - len(firsts),
@@ -454,6 +536,13 @@ def improvement_items(report, month=None):
         items.append({"code": "insufficient-delivery-baseline", "priority": "P2", "task_ids": [],
             "action": "Collect more confirmed deliveries before interpreting productivity trends",
             "evidence": {"delivered": report.get("delivered_tasks", 0), "required": 20}})
+    comparison = report.get("delivery_configuration_v1", {})
+    globally_conflicting = {entry["task_id"] for entry in comparison.get("excluded", [])
+                            if entry["reason"] == "duplicate-or-conflicting-pr-delivery"}
+    if not comparison.get("any_configuration_baseline_ready"):
+        items.append({"code": "insufficient-comparable-configuration-baseline", "priority": "P2", "task_ids": [],
+            "action": "Collect twenty qualified real deliveries in the same declared acceptance/toolchain/runner-layout cohort before comparing that configuration",
+            "evidence": {"eligible_deliveries": comparison.get("eligible_deliveries"), "required_per_cohort": 20}})
     unknown = {key: value["unknown"] for key, value in report.get("counters", {}).items() if value.get("unknown")}
     if unknown:
         items.append({"code": "explicit-counter-coverage", "priority": "P2", "task_ids": [],
@@ -463,5 +552,25 @@ def improvement_items(report, month=None):
           "stages":{phase:{name:distribution([row.get("ci_observations",{}).get(phase,{}).get(name) for row in selected],len(selected))
                            for name in TIMINGS} for phase in ("pull_request","merged_dev")},
           "qualification":"Local accepted-attempt observations only; hosted jobs, controller confirmation and post-confirmation cleanup are separate. Missing/legacy/foreign/invalid clocks remain unknown; no remote query or repair."}
+    deliveries = [row for row in rows if row.get("delivered") is True and
+                  (merged := timestamp(row.get("delivered_at"))) is not None and start <= merged < end]
+    first_results = [row.get("first_full_verification", {}).get("first") for row in deliveries]
+    first_counts = Counter(value for value in first_results if value in ("PASS", "FAIL"))
+    first_samples = sum(first_counts.values())
+    counter_coverage = {}
+    for field in ("human_interventions", "rework_count"):
+        values = [row.get("manual_observations_v1", {}).get("totals", {}).get(field) for row in deliveries]
+        known = [value for value in values if type(value) is int and value >= 0]
+        counter_coverage[field] = {"samples": len(known), "unknown": len(deliveries)-len(known),
+                                   "known_total": sum(known) if known else None}
+    stage_names = sorted({name for row in deliveries for name in row.get("stages_seconds", {})})
+    monthly = {"delivered_tasks":len(deliveries), "first_full_verification":{
+        "passes":first_counts["PASS"], "failures":first_counts["FAIL"], "unknown_tasks":len(deliveries)-first_samples,
+        "fraction":first_counts["PASS"]/first_samples if first_samples else None}, "counters":counter_coverage,
+        "stages":{name:distribution([row.get("stages_seconds",{}).get(name) for row in deliveries],len(deliveries))
+                  for name in stage_names}}
     return {"schema_version": 1, "month": month, "timezone": "UTC", "items": items, "ci_observations":ci,
+            "monthly_delivery":monthly,
+            "delivery_configuration_v1":{"all_time":copy.deepcopy(comparison),
+                "month":_configuration_cohorts(deliveries, globally_conflicting_pr_tasks=globally_conflicting)},
             "qualification": "Evidence-linked suggestions only; no repairs or delivery authorization"}

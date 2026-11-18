@@ -59,6 +59,57 @@ def timed_task(name="timed"):
 
 
 class ReducerTests(unittest.TestCase):
+    def configuration_delivery(self, index, lock='1'*64):
+        row=timed_task('delivery-'+str(index))
+        row.update(kind='engineering',role='writer',delivery_mode='auto',integration_target='dev',
+                   toolchain_key=lock,input_contract={'acceptance_argv':[['make','verify']]})
+        row['delivery']['number']=index+1
+        return row
+
+    def test_twenty_configuration_samples_are_not_twenty_total_or_mixed_deliveries(self):
+        rows=[self.configuration_delivery(index) for index in range(19)]
+        old=task('legacy')
+        report=metrics.summarize([*rows,old],as_of=NOW)
+        self.assertTrue(report['baseline_ready'])
+        self.assertFalse(report['delivery_configuration_v1']['any_configuration_baseline_ready'])
+        twentieth=self.configuration_delivery(19)
+        result=metrics.summarize([*rows,twentieth],as_of=NOW)['delivery_configuration_v1']
+        self.assertTrue(result['any_configuration_baseline_ready'])
+        self.assertEqual(result['eligible_deliveries'],20)
+        # No actual runtime/case artifact is invented or made an extra dependency.
+        self.assertNotIn('runtime_versions',result['cohorts'][0]['configuration'])
+        twentieth['toolchain_key']='2'*64
+        self.assertFalse(metrics.summarize([*rows,twentieth],as_of=NOW)['delivery_configuration_v1']['any_configuration_baseline_ready'])
+        duplicate=copy.deepcopy(rows[-1])
+        self.assertFalse(metrics.summarize([*rows,duplicate],as_of=NOW)['delivery_configuration_v1']['any_configuration_baseline_ready'])
+
+    def test_monthly_delivery_counts_merge_month_and_preserves_unknown_counter_coverage(self):
+        sample = self.configuration_delivery(0)
+        sample["started_at"] = "2026-10-31T00:00:00Z"
+        sample["delivered_at"] = "2026-11-17T00:00:00Z"
+        measured = metrics.summarize([sample], as_of=NOW)
+        oct_report = metrics.improvement_items(measured, "2026-10")
+        nov_report = metrics.improvement_items(measured, "2026-11")
+        self.assertEqual(oct_report["monthly_delivery"]["delivered_tasks"], 0)
+        self.assertEqual(oct_report["delivery_configuration_v1"]["month"]["eligible_deliveries"], 0)
+        self.assertEqual(nov_report["monthly_delivery"]["delivered_tasks"], 1)
+        self.assertEqual(nov_report["delivery_configuration_v1"]["month"]["eligible_deliveries"], 1)
+        self.assertIsNone(nov_report["monthly_delivery"]["counters"]["human_interventions"]["known_total"])
+        self.assertEqual(nov_report["monthly_delivery"]["counters"]["human_interventions"]["unknown"], 1)
+
+    def test_monthly_cohort_keeps_global_pr_conflicts_excluded_across_months(self):
+        november = [self.configuration_delivery(index) for index in range(20)]
+        october = self.configuration_delivery(20)
+        october["delivered_at"] = "2026-10-31T22:00:00Z"
+        october["delivery"]["number"] = november[0]["delivery"]["number"]
+        view = metrics.summarize([*november, october], as_of=NOW)
+        self.assertEqual(view["delivery_configuration_v1"]["eligible_deliveries"], 19)
+        month = metrics.improvement_items(view, "2026-11")["delivery_configuration_v1"]["month"]
+        self.assertEqual(month["eligible_deliveries"], 19)
+        self.assertFalse(month["any_configuration_baseline_ready"])
+        self.assertIn({"task_id": november[0]["task_id"], "reason": "duplicate-or-conflicting-pr-delivery"},
+                      month["excluded"])
+
     def test_monthly_ci_columns_separate_provider_controller_and_cleanup_with_legacy_unknowns(self):
         measured=timed_task(); legacy=task("legacy")
         rows=copy.deepcopy([measured,legacy])

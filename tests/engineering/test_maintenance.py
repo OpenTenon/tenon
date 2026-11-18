@@ -1,5 +1,7 @@
 """Exercise archive recovery and reclaim only verifiable, unreferenced controller copies."""
 from __future__ import annotations
+
+import copy
 import hashlib
 import json
 import os
@@ -7,6 +9,7 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
+from types import SimpleNamespace
 from test_engineering import RepositoryFixture
 from test_lifecycle_v2 import OwnedWorktreeFixture
 from task_archive import archive_task, deploy_controller, safe_relative, verify_archive
@@ -169,6 +172,147 @@ class ControllerMaintenanceTests(RepositoryFixture):
                 maintenance.prune_controllers(self.root, True)
             self.assertEqual(maintenance.prune_controllers(self.root)['removed'], [])
         self.assertTrue((self.store.root/'controllers'/commit).exists())
+
+
+class MonthlyInventoryTests(RepositoryFixture):
+    def setUp(self):
+        super().setUp()
+        self.root=self.root.resolve()
+        self.store=TaskStore(self.root)
+
+    def drill_report(self):
+        scratch=self.store.root/'drill-scratch'
+        root=scratch/'tenon-drill-owned'; root.mkdir(parents=True)
+        (root/'owner-token').write_text('owned-token',encoding='utf-8')
+        manifest=root/'fixture.json'
+        write_json(manifest,{'schema_version':1,'scenario':'exit-resume','phase':'CREATING','root':str(root),
+                             'production_common':str(self.store.common),'owner_token':'owned-token'})
+        output=self.store.root/'operations/drills/retained'
+        write_json(output/'summary.json',{'schema_version':1,'kind':'engineering-recovery-drill',
+            'production_common':str(self.store.common),'scenarios':[{'scenario':'exit-resume','status':'FAIL',
+            'fixture_removed':False,'fixture_preserved':True,'recovery_manifest':str(manifest)}]})
+        return manifest
+
+    def test_partial_owned_drill_inventory_never_replays_repairs_or_deletes(self):
+        manifest=self.drill_report()
+        before={path: path.read_bytes() for path in self.store.root.rglob('*') if path.is_file()}
+        with mock.patch('engineering_drills._control',side_effect=AssertionError('no worker qualification')):
+            result=maintenance.retained_drill_reports(self.store.common)
+        self.assertEqual(result['rows'][0]['phase'],'CREATING')
+        self.assertEqual(result['rows'][0]['ownership'],'BOUNDARY_OWNER_MATCH')
+        original=Path.lstat
+        def denied(path,*args,**kwargs):
+            if path==manifest:raise PermissionError('fixture metadata access denied')
+            return original(path,*args,**kwargs)
+        with mock.patch.object(Path,'lstat',denied):
+            self.assertEqual(maintenance.retained_drill_reports(self.store.common)['rows'][0]['inspection'],'UNKNOWN_PERMISSION')
+        self.assertEqual({path:path.read_bytes() for path in before},before)
+        manifest.unlink()
+        self.assertEqual(maintenance.retained_drill_reports(self.store.common)['rows'][0]['inspection'],'MISSING')
+
+    def test_bad_or_foreign_drill_report_is_unknown_without_following_its_target(self):
+        manifest=self.drill_report()
+        report=self.store.root/'operations/drills/retained/summary.json'
+        before=manifest.read_bytes()
+        report.write_text('{broken',encoding='utf-8')
+        self.assertEqual(maintenance.retained_drill_reports(self.store.common)['rows'][0]['inspection'],'UNKNOWN')
+        value={'schema_version':1,'kind':'engineering-recovery-drill','production_common':str(self.store.common),
+               'scenarios':[{'scenario':'exit-resume','status':'FAIL','recovery_manifest':str(self.root/'foreign/fixture.json')}]}
+        write_json(report,value)
+        self.assertEqual(maintenance.retained_drill_reports(self.store.common)['rows'][0]['inspection'],'UNKNOWN')
+        self.assertEqual(manifest.read_bytes(),before)
+
+    def test_retained_drill_inventory_does_not_follow_redirected_operations_ancestor(self):
+        manifest = self.drill_report()
+        parent = self.store.root / "operations"
+        before = manifest.read_bytes()
+        original = Path.lstat
+
+        def redirected(path, *args, **kwargs):
+            info = original(path, *args, **kwargs)
+            if path == parent:
+                return SimpleNamespace(st_mode=info.st_mode, st_file_attributes=0x400)
+            return info
+
+        with mock.patch.object(Path, "lstat", redirected):
+            view = maintenance.retained_drill_reports(self.store.common)
+        self.assertEqual(view["namespace"], "UNKNOWN")
+        self.assertEqual(manifest.read_bytes(), before)
+
+    def test_audit_backlog_includes_older_merged_tasks_but_never_claims_cleanup(self):
+        self.store.create({'task_id':'old-pending','status':'WAITING_DEV_CI',
+            'worktree':str(self.root/'build/older-pending-worktree'),
+            'delivery':{'merged':True,'merged_at':'2025-01-01T00:00:00Z'}})
+        self.store.create({'task_id':'already-cleaned','status':'CLEANED',
+            'worktree':str(self.root/'build/old-clean-worktree'),'delivery':{'merged':True}})
+        with mock.patch.object(maintenance,'controller_inventory',return_value={'versions':[]}), \
+                mock.patch.object(maintenance,'retained_drill_reports',return_value={'rows':[]}), \
+                mock.patch.object(maintenance,'archive_capacity',return_value={'total_bytes':None}), \
+                mock.patch.object(maintenance,'prune_controllers',side_effect=AssertionError('audit cannot reclaim')):
+            result=maintenance.audit(self.root,live=False,include_source=False)
+        self.assertEqual([row['task_id'] for row in result['merged_cleanup_backlog']],['old-pending'])
+        self.assertEqual(self.store.load('old-pending')['status'],'WAITING_DEV_CI')
+
+    def test_archive_capacity_deduplicates_known_identity_but_never_same_sha_or_unknown_bytes(self):
+        root=self.store.root/'archives/owned'; root.mkdir(parents=True)
+        supplementary=self.store.root/'operations/owned'
+        supplementary.mkdir(parents=True)
+        first,second,alias=root/'a.zip',supplementary/'acceptance-test.zip',root/'alias.zip'
+        first.write_bytes(b'same'); second.write_bytes(b'same')
+        try:os.link(first,alias)
+        except OSError:self.skipTest('Fixture filesystem does not support a native hardlink')
+        tasks=[{'task_id':'owned','archive':{'path':str(first),'sha256':'a'*64},
+                'archive_history':[{'path':str(item),'sha256':'a'*64} for item in (first,second,alias)]}]
+        value=maintenance.archive_capacity(self.store,tasks)
+        self.assertEqual(value['duplicate_references'],1)
+        self.assertEqual(value['observed_zip_paths'],3)
+        self.assertEqual(value['confirmed_unique_files'],2)
+        self.assertEqual(value['total_bytes'],8)
+        original=Path.lstat
+        def unknown(path,*args,**kwargs):
+            info=original(path,*args,**kwargs)
+            if path.suffix=='.zip':
+                return SimpleNamespace(st_mode=info.st_mode,st_file_attributes=0,st_dev=0,st_ino=0,st_size=info.st_size)
+            return info
+        with mock.patch.object(Path,'lstat',unknown):
+            unknown_value=maintenance.archive_capacity(self.store,tasks)
+        self.assertIsNone(unknown_value['total_bytes'])
+        self.assertGreater(unknown_value['known_path_bytes'],0)
+        self.assertEqual(unknown_value['unknown_identity_paths'],3)
+
+    def test_retention_reasons_observe_the_existing_current_previous_state(self):
+        versions=['a'*40,'b'*40]
+        for version in versions:
+            directory=self.store.root/'controllers'/version
+            directory.mkdir(parents=True)
+            (directory/'payload').write_bytes(b'owned')
+            os.utime(directory,(time.time()-172800,time.time()-172800))
+        write_json(self.store.root/'bin/installation.json',{'schema_version':1,'repo_id':self.store.repo_id,
+            'commit':versions[0],'previous_commit':versions[1],'host_platform':os.name})
+        with mock.patch.object(maintenance,'verify_controller',return_value={'files':[]}), \
+                mock.patch.object(maintenance,'unclassified_payloads',return_value=[]), \
+                mock.patch('controller_leases.version_observation',return_value={'state':'IDLE','held':False}), \
+                mock.patch('controller_leases.registry_issues',return_value=[]), \
+                mock.patch.object(maintenance.shutil,'rmtree',side_effect=AssertionError('inventory cannot delete')):
+            value=maintenance.controller_inventory(self.store)
+        rows={row['commit']:row for row in value['versions']}
+        self.assertEqual({row['state'] for row in rows.values()},{'RETAINED'})
+        self.assertIn('current-installed',rows[versions[0]]['retention_reasons'])
+        self.assertIn('previous-installed',rows[versions[1]]['retention_reasons'])
+
+    def test_rotation_cursor_advances_only_after_the_existing_successful_restore(self):
+        folder=self.store.root/'maintenance/fixture'; folder.mkdir(parents=True)
+        result={'status':'PASS','checks':[],'report':str(folder/'summary.json'),'work_items':str(folder/'work-items.json')}
+        with mock.patch.object(self.store.__class__,'all',return_value=[{'task_id':'sample','archive':{'path':'unused'}}]), \
+                mock.patch.object(maintenance,'audit',return_value=copy.deepcopy(result)), \
+                mock.patch('engineering_metrics.collect',return_value={'diagnostics':[]}), \
+                mock.patch('engineering_metrics.improvement_items',return_value={'items':[]}), \
+                mock.patch.object(maintenance,'restore_check',side_effect=ValueError('retained restore failure')), \
+                mock.patch.object(maintenance,'prune_controllers') as reclaim:
+            observed=maintenance.run_due(self.root,force=True)
+        state=json.loads((self.store.root/'maintenance-state.json').read_bytes())
+        self.assertEqual(observed['status'],'FAIL'); self.assertEqual(state['restore_cursor'],0)
+        reclaim.assert_not_called()
 
 
 class WorkerMaintenanceTests(RepositoryFixture):

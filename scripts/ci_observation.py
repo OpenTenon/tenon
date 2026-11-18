@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import re
 from datetime import datetime, timezone
 
@@ -88,6 +90,7 @@ def phase_metrics(records, *, task_id, repository, candidate_head, accepted_head
     """Reduce only a matching accepted attempt; no clocks inferred from journals/mtime."""
     result = {name: None for name in TIMINGS}
     result.update(run_id=None, run_attempt=None, candidate_head_sha=None, provider_head_sha=None,
+                  runner_labels_by_job=None, runner_layout_sha256=None,
                   ci_completed_at=None, controller_observed_at=None, qualification="unknown: legacy or missing accepted CI observation")
     records = [record for record in records if isinstance(record, dict) and record.get("observation") is not None]
     if not records:
@@ -126,6 +129,13 @@ def phase_metrics(records, *, task_id, repository, candidate_head, accepted_head
         return result
     result.update(run_id=value["run_id"], run_attempt=value["run_attempt"], candidate_head_sha=candidate_head,
                   provider_head_sha=value["provider_head_sha"], qualification="accepted attempt observation; timing clocks are qualified separately")
+    # These are verified job selectors, not evidence of the hosted image or
+    # installed runtime. Missing selectors must never come from local tooling.
+    if all(isinstance(job.get("labels"), list) and 0 < len(job["labels"]) <= 64
+           and all(isinstance(label, str) and label and len(label) <= 256 for label in job["labels"]) for job in jobs):
+        layout = {job["name"]: sorted(set(job["labels"])) for job in sorted(jobs, key=lambda job: job["name"])}
+        result["runner_labels_by_job"] = layout
+        result["runner_layout_sha256"] = hashlib.sha256(json.dumps(layout, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
     observed = _time(value.get("observed_at"))
     result["controller_observed_at"] = observed.isoformat() if observed is not None else None
     result["confirmation_to_cleaned_seconds"] = _elapsed(observed, _time(cleaned_at))
