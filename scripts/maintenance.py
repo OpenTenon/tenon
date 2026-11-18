@@ -125,12 +125,16 @@ def registered_host(store: TaskStore) -> str | None:
     return None
 
 
-def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
+def retained_versions(store: TaskStore, *, reasons=None) -> tuple[set[str], bool]:
     retained = set()
+    def keep(value, reason):
+        retained.add(value)
+        if reasons is not None:
+            reasons.setdefault(value, []).append(reason)
     uncertain = False
     executing = Path(__file__).resolve().parents[1]
     if executing.parent == (store.root / "controllers").resolve() and re.fullmatch(r"[0-9a-f]{40}", executing.name):
-        retained.add(executing.name)
+        keep(executing.name, "executing-controller")
     installation = store.root / "bin/installation.json"
     if installation.exists():
         value = json.loads(installation.read_text(encoding="utf-8"))
@@ -138,7 +142,9 @@ def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
             raise ValueError("Installed entry belongs to another repository")
         if value.get("schema_version") != 1 or any(value.get(key) is not None and not re.fullmatch(r"[0-9a-f]{40}", str(value[key])) for key in ("commit", "previous_commit")):
             uncertain = True
-        retained.update(item for item in (value.get("commit"), value.get("previous_commit")) if item)
+        for key, reason in (("commit", "current-installed"), ("previous_commit", "previous-installed")):
+            if value.get(key):
+                keep(value[key], reason)
     for task in store.all():
         if task.get("status") != "CLEANED" and task.get("controller"):
             path = Path(task["controller"]).resolve()
@@ -146,7 +152,7 @@ def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
             if path.parent.name != "scripts" or version.parent != (store.root / "controllers").resolve() or not re.fullmatch(r"[0-9a-f]{40}", version.name):
                 uncertain = True
             else:
-                retained.add(version.name)
+                keep(version.name, "active-task:" + str(task.get("task_id", "unknown")))
     heartbeat = store.root / "operations/worker-latest.json"
     foreign = registered_host(store) not in {None, os.name}
     unknown_worker = foreign or uncertain
@@ -165,21 +171,25 @@ def retained_versions(store: TaskStore) -> tuple[set[str], bool]:
                     or observed.get("lease_token") != lease.get("token")):
                 unknown_worker = True
             else:
-                retained.add(observed["controller_commit"])
+                keep(observed["controller_commit"], "native-worker-lease")
     if heartbeat.exists():
         value = observed
         if value.get("host_platform") != os.name or process_alive(int(value.get("pid", 0))):
             if value.get("controller_commit"):
-                retained.add(value["controller_commit"])
+                keep(value["controller_commit"], "recorded-worker-reference")
             else:
                 unknown_worker = True
     return retained, unknown_worker
 
 
-def controller_inventory(store: TaskStore, *, exclusive_versions=None) -> dict:
+def controller_inventory(store: TaskStore, *, exclusive_versions=None, include_retention_reasons=False) -> dict:
     from controller_leases import version_observation, redirected, registry_issues
     exclusive_versions = exclusive_versions or {}
-    retained, unknown_worker = retained_versions(store)
+    reasons = {}
+    if include_retention_reasons:
+        retained, unknown_worker = retained_versions(store, reasons=reasons)
+    else:
+        retained, unknown_worker = retained_versions(store)
     issues = registry_issues(store.root)
     values = []
     controllers = store.root / "controllers"
@@ -195,12 +205,19 @@ def controller_inventory(store: TaskStore, *, exclusive_versions=None) -> dict:
             unknown = unclassified_payloads(directory, manifest)
             recent = datetime.now(timezone.utc).timestamp() - directory.stat().st_mtime < 86400
             lease = version_observation(store.root, directory, owned_exclusive=exclusive_versions.get(directory.name))
+            retention_reasons = list(reasons.get(directory.name, []))
+            retention_reasons += [name for condition, name in ((recent, "within-24h"),
+                (unknown_worker, "worker-identity-unknown"), (bool(issues), "lease-registry-issues"),
+                (bool(lease.get("held")), "active-os-execution-lease"),
+                (lease["state"] == "UNKNOWN", "execution-identity-unknown-or-legacy"),
+                (bool(unknown), "unclassified-payloads")) if condition]
             size = None if unknown else sum(path.stat().st_size for path in directory.rglob("*") if path.is_file() and not path.is_symlink())
             values.append({"path": str(directory), "commit": directory.name,
                            "state": "UNCLASSIFIED" if unknown else "UNKNOWN" if lease["state"] == "UNKNOWN" else
                                     "RETAINED" if directory.name in retained or unknown_worker or recent or issues or lease.get("held") else "RECLAIMABLE",
                            "unclassified": unknown, "lease": lease, "logical_bytes": size,
-                           "within_24h": recent, "referenced": directory.name in retained})
+                           "within_24h": recent, "referenced": directory.name in retained,
+                           **({"retention_reasons": sorted(set(retention_reasons))} if include_retention_reasons else {})})
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
             values.append({"path": str(directory), "state": "INVALID", "reason": safe_exception(error)})
     return {"versions": values, "active_worker_identity_unknown": unknown_worker, "lease_registry_issues": issues}
@@ -258,10 +275,153 @@ def prune_controllers(repo: Path, apply: bool = False) -> dict:
             "capacity_qualification": "Observed free space may include unrelated filesystem activity; archives are never reclaimed"}
 
 
+def _inventory_json(path: Path) -> dict:
+    """Bounded metadata read, with exception types preserved for the observer."""
+    info = path.lstat()
+    if (stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400
+            or not stat.S_ISREG(info.st_mode) or info.st_size > 1024 * 1024):
+        raise ValueError("Inventory metadata is redirected, nonregular or oversized")
+    value = json.loads(path.read_bytes())
+    if not isinstance(value, dict):
+        raise ValueError("Inventory metadata must be an object")
+    return value
+
+
+def _inventory_directory(path: Path) -> None:
+    info = path.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+            or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)):
+        raise ValueError("Inventory directory is redirected or unknown")
+
+
+def retained_drill_reports(common: Path) -> dict:
+    """Read original reports and owned boundaries only; never replay a fixture."""
+    common = common.resolve()
+    reports, scratch = common / "tenon/operations/drills", common / "tenon/drill-scratch"
+    rows = []
+    try:
+        for parent in (common / "tenon", common / "tenon/operations", reports):
+            _inventory_directory(parent)
+        paths = sorted(reports.iterdir())
+    except FileNotFoundError:
+        return {"rows": [], "namespace": "MISSING", "qualification": "No deletion attribution or cleanup permission"}
+    except (PermissionError, OSError, ValueError) as error:
+        return {"rows": [{"inspection": "UNKNOWN", "error_type": type(error).__name__}], "namespace": "UNKNOWN"}
+    for directory in paths:
+        path = directory / "summary.json"
+        try:
+            _inventory_directory(directory)
+            report = _inventory_json(path)
+            if (type(report.get("schema_version")) is not int or report["schema_version"] != 1 or report.get("kind") != "engineering-recovery-drill"
+                    or Path(report.get("production_common", "")) != common or not isinstance(report.get("scenarios"), list)):
+                raise ValueError("Report schema/repository differs")
+        except (OSError, ValueError, TypeError) as error:
+            rows.append({"report": str(path), "inspection": "UNKNOWN", "error_type": type(error).__name__})
+            continue
+        for scenario in report["scenarios"]:
+            if isinstance(scenario, dict) and (scenario.get("status") == "PASS" or scenario.get("fixture_created") is False):
+                continue
+            row = {"report": str(path), "scenario": scenario.get("scenario") if isinstance(scenario, dict) else None,
+                   "reported_status": scenario.get("status") if isinstance(scenario, dict) else None,
+                   "inspection": "UNKNOWN", "phase": None, "ownership": "UNKNOWN"}
+            try:
+                raw = scenario.get("recovery_manifest") if isinstance(scenario, dict) else None
+                if not isinstance(raw, str):
+                    raise ValueError("Recovery manifest is missing")
+                manifest = Path(raw)
+                if (not manifest.is_absolute() or manifest.name != "fixture.json" or manifest.parent.parent != scratch
+                        or not manifest.parent.name.startswith("tenon-drill-") or ".." in manifest.parts):
+                    raise ValueError("Manifest is outside this repository's owned scratch")
+                for directory_path in (scratch, manifest.parent):
+                    _inventory_directory(directory_path)
+                info = (manifest.parent / "owner-token").lstat()
+                if (not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_size > 4096
+                        or getattr(info, "st_file_attributes", 0) & 0x400):
+                    raise ValueError("Owner token is unknown or redirected")
+                data = _inventory_json(manifest)
+                if (type(data.get("schema_version")) is not int or data["schema_version"] != 1
+                        or data.get("phase") not in {"CREATING", "READY"} or not isinstance(data.get("owner_token"), str)
+                        or not data["owner_token"] or Path(data.get("production_common", "")) != common
+                        or Path(data.get("root", "")) != manifest.parent):
+                    raise ValueError("Manifest repository/root differs")
+                # ready=False verifies the existing owner token and persistent
+                # boundary. It does not call _control/TaskStore/fake backend.
+                from engineering_drills import _boundary
+                data = _boundary(manifest, ready=False)
+                row.update(inspection="OBSERVED", phase=data.get("phase"), ownership="BOUNDARY_OWNER_MATCH",
+                           recovery_manifest=str(manifest), qualification="Partial setup observation; not readiness or deletion permission")
+            except FileNotFoundError:
+                row["inspection"] = "MISSING"
+                row["qualification"] = "Observed missing metadata; cause and prior deletion remain unknown"
+            except PermissionError:
+                row["inspection"] = "UNKNOWN_PERMISSION"
+            except (OSError, ValueError, TypeError) as error:
+                row.update(inspection="UNKNOWN", error_type=type(error).__name__)
+            rows.append(row)
+    return {"rows": rows, "namespace": "OBSERVED", "qualification": "Retained failed drill evidence only; no recovery, mutation or deletion"}
+
+
+def archive_capacity(store, tasks) -> dict:
+    """Logical ZIP bytes for registered archives, including task supplements."""
+    root = store.root
+    references, unknown = {}, []
+    reference_count = 0
+    for task in tasks:
+        task_id = task.get("task_id")
+        supplements = (root / "operations" / task_id
+                       if isinstance(task_id, str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]*", task_id) else None)
+        for item in [task.get("archive"), *task.get("archive_history", [])]:
+            if item is None:
+                continue
+            reference_count += 1
+            raw = item.get("path") if isinstance(item, dict) else None
+            path = Path(raw) if isinstance(raw, str) else None
+            if (path is None or not path.is_absolute() or ".." in path.parts or path.suffix.lower() != ".zip"
+                    or not (path.is_relative_to(root / "archives")
+                            or supplements is not None and path.is_relative_to(supplements))):
+                unknown.append({"reason": "unqualified-archive-reference"})
+                continue
+            references.setdefault(os.path.normcase(str(path)), path)
+
+    sizes, identities = {}, {}
+    unknown_identity = 0
+    for key, path in references.items():
+        try:
+            for parent in reversed(path.parents):
+                if parent.is_relative_to(root):
+                    _inventory_directory(parent)
+            info = path.lstat()
+            if (not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
+                    or getattr(info, "st_file_attributes", 0) & 0x400):
+                raise ValueError("Archive file is redirected or unknown")
+            sizes[key] = info.st_size
+            if info.st_ino > 0 and info.st_dev >= 0:
+                identities.setdefault((info.st_dev, info.st_ino), info.st_size)
+            else:
+                unknown_identity += 1
+        except (OSError, ValueError) as error:
+            unknown.append({"reason": "registered-archive-not-observed", "path": key, "error_type": type(error).__name__})
+    return {"scope": "Registered private archives and supplements", "archive_retention": "indefinite",
+            "references": reference_count, "duplicate_references": reference_count-len(references)-sum(
+                row["reason"] == "unqualified-archive-reference" for row in unknown),
+            "observed_zip_paths": len(sizes), "confirmed_unique_files": len(identities),
+            "known_path_bytes": sum(sizes.values()), "confirmed_unique_bytes": sum(identities.values()),
+            "unknown_identity_paths": unknown_identity, "unknown_entries": unknown,
+            "total_bytes": sum(identities.values()) if not unknown and not unknown_identity else None,
+            "qualification": "Logical ZIP sizes, not allocated disk space. Distinct files with identical hashes are counted separately; unknowns stay unknown."}
+
+
 def audit(repo: Path, live: bool = True, include_source: bool = True) -> dict:
     store = TaskStore(repo)
     result = {"schema_version": 1, "kind": "engineering-maintenance", "run_id": run_id(), "started_at": utc_now(), "checks": []}
-    for task in store.all():
+    tasks = store.all()
+    result["merged_cleanup_backlog"] = [{"task_id": task["task_id"], "status": task.get("status"),
+        "merged_at": task.get("delivered_at") or task["delivery"].get("merged_at"),
+        "qualification": "Recorded merged but not CLEANED; inspect existing live gates before acting"}
+        for task in tasks if isinstance(task.get("delivery"), dict) and task["delivery"].get("merged") is True and task.get("status") != "CLEANED"]
+    result["retained_drill_reports"] = retained_drill_reports(store.common)
+    result["archive_capacity"] = archive_capacity(store, tasks)
+    for task in tasks:
         if not task.get("archive"):
             continue
         archives = [task["archive"], *task.get("archive_history", [])]
@@ -277,7 +437,7 @@ def audit(repo: Path, live: bool = True, include_source: bool = True) -> dict:
                 result["checks"].append({"id": check_id, "status": "PASS", "files": len(manifest["files"])})
             except (OSError, ValueError, KeyError) as error:
                 result["checks"].append({"id": check_id, "status": "FAIL", "reason": safe_exception(error)})
-    result["controllers"] = controller_inventory(store)
+    result["controllers"] = controller_inventory(store, include_retention_reasons=True)
     states = {item["state"] for item in result["controllers"]["versions"]}
     result["checks"].append({"id": "controllers", "status": "FAIL" if "INVALID" in states else "BLOCKED" if "UNCLASSIFIED" in states else "PASS"})
     if include_source:
@@ -310,6 +470,10 @@ def proposed_work_items(result: dict) -> list[dict]:
     work.extend({"check":"metrics:"+item["code"],"state":"PROPOSED","priority":item["priority"],
                  "task_ids":item["task_ids"],"reason":item["action"],"evidence":result["report"],"observations":item["evidence"]}
                 for item in result.get("improvement_items",{}).get("items",[]))
+    work.extend({"check":"retained-drill:"+str(index),"state":"PROPOSED","priority":"P2",
+                 "reason":"Inspect retained failed drill evidence; do not delete or replay automatically",
+                 "evidence":row.get("report"),"observations":row}
+                for index,row in enumerate(result.get("retained_drill_reports",{}).get("rows",[])))
     return work
 
 

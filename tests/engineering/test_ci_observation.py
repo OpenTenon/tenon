@@ -42,6 +42,16 @@ def timing(value, event='pull_request', **options):
 
 
 class ObservationTests(unittest.TestCase):
+    def test_runner_selector_signature_is_additive_owned_and_order_independent(self):
+        value=snapshot(); first=timing(record(value))
+        self.assertEqual(first['runner_labels_by_job']['tools-windows'],['windows-2022'])
+        changed=copy.deepcopy(value); changed['jobs'].reverse()
+        self.assertEqual(timing(record(changed))['runner_layout_sha256'],first['runner_layout_sha256'])
+        foreign=record(value); foreign['observation']['candidate_head_sha']=DEV
+        self.assertIsNone(timing(foreign)['runner_labels_by_job'])
+        changed['jobs'][0]['labels']=None
+        self.assertIsNone(timing(record(changed))['runner_layout_sha256'])
+
     def test_allowlist_and_distinct_candidate_provider_heads_keep_raw_clocks_without_mutation(self):
         value=snapshot(); value['secret']='must-not-retain'; value['jobs'][0]['steps']=[{'env':'must-not-retain'}]
         value['workflow_run']['head_sha']=MERGE
