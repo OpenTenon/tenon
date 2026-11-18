@@ -203,6 +203,14 @@ coordinators have no source write scope and do not consume a writer slot.
 
 ## Task contracts and collaboration
 
+Append `--dry-run` to the complete `git tenon task start` command for a local
+preview. It reports the normalized contract, acceptance argv, locally observed
+dev base and writer capacity. It leaves workspace, refs and task state unchanged.
+An existing task or interrupted setup routes to its recorded workflow. Actual
+start refreshes dev, binds the machine verifier and evaluates the contract while
+holding allocation. The preview shows the declared acceptance argv and defers the
+machine verifier selection.
+
 The stable entry accepts `--role writer|integrator|coordinator|reviewer`, optional
 `--read-allow`, `--input` and `--output` arguments. Source scopes are normalized
 repository-relative patterns; traversal, absolute/drive paths and Git metadata
@@ -239,6 +247,13 @@ PID liveness, and Windows/WSL lock namespaces are not interchangeable. Existing
 production host ownership and command-resource leases still apply.
 
 ## Verification and CI
+
+For early development feedback, run
+`python3 scripts/engineering_tests.py --module test_task_contracts` in the task
+checkout. Repeat `--module` for more complete modules. Unknown or duplicate names
+fail, and module selection cannot be combined with a Windows CI shard. Reports
+keep the discovery inventory and mark selected execution as partial evidence.
+Full `make verify` and required CI still run at the existing handoff gates.
 
 Register an already available verifier once with `host configure
 --verify-command-json '["existing-validator", "{worktree}"]'`. Repeated `--input`

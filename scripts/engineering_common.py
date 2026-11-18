@@ -176,12 +176,18 @@ def finish_summary(summary: dict, root: Path, path: Path, readonly: bool = True)
     return summary
 
 
+def _partial_evidence(value: dict) -> bool:
+    return (bool(value.get("partial")) or value.get("kind") in
+            {"verification-partial", "engineering-unittest-shard", "engineering-unittest-focus"}
+            or "shard" in value or "focus" in value)
+
+
 def validate_evidence(path: Path, root: Path, required: set[str] | None = None) -> dict:
     """Validate local evidence, never infer CI execution or signoff from its contents."""
     value = json.loads(path.read_text(encoding="utf-8"))
     if value.get("schema_version") != SCHEMA_VERSION or value.get("status") != "PASS":
         raise ValueError("Evidence schema/status is not acceptable")
-    if value.get("partial") or value.get("kind") in {"verification-partial", "engineering-unittest-shard"} or "shard" in value:
+    if _partial_evidence(value):
         raise ValueError("Partial/sharded observations cannot qualify as full verification evidence")
     if not value.get("completed_at") or not value.get("run_id"):
         raise ValueError("Evidence is incomplete")
@@ -208,6 +214,19 @@ def validate_evidence(path: Path, root: Path, required: set[str] | None = None) 
             raise ValueError("Unknown evidence check status")
         if check.get("id") in (required or set()) and (check.get("status") != "PASS" or not check.get("required", True)):
             raise ValueError("A required check was made optional or did not pass")
+        if (reference := check.get("test_report")) is not None:
+            if not isinstance(reference, dict) or not isinstance(reference.get("path"), str):
+                raise ValueError("Evidence test report reference is invalid")
+            test_report = (path.parent / reference["path"]).resolve()
+            if (not test_report.is_relative_to(path.parent.resolve()) or not test_report.is_file()
+                    or reference.get("sha256") != digest(test_report)):
+                raise ValueError("Evidence test report is missing or has a mismatched hash")
+            attached = json.loads(test_report.read_text(encoding="utf-8"))
+            if not isinstance(attached, dict) or _partial_evidence(attached):
+                raise ValueError("Partial or invalid test report cannot qualify as full verification evidence")
+            if (attached.get("kind") != "engineering-unittest" or attached.get("status") != "PASS"
+                    or attached.get("source") != actual or attached.get("source_after") != actual):
+                raise ValueError("Attached test report is not complete successful evidence for this source")
         if "command" not in check:
             continue
         if not isinstance(check["command"], list) or not check["command"] or check.get("exit_code") != 0:

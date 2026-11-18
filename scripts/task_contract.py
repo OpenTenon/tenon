@@ -304,6 +304,17 @@ def preflight(store: TaskStore, task_id: str, allowed: list[str], checks: list[s
             return preflight(store, task_id, allowed, checks, dependencies, role=role, read_scope=read_scope,
                              inputs=inputs, outputs=outputs, base_sha=base_sha, allocation=ticket, analysis_root=analysis_root)
     allocation.assert_owner(store)
+    prepared, _ = inspect_preflight(store, task_id, allowed, checks, dependencies, role=role,
+                                    read_scope=read_scope, inputs=inputs, outputs=outputs,
+                                    base_sha=base_sha, analysis_root=analysis_root)
+    return prepared
+
+
+def inspect_preflight(store: TaskStore, task_id: str, allowed: list[str], checks: list[str], dependencies: list[str], *,
+                      role: str = "writer", read_scope: list[str] | None = None,
+                      inputs: list[str] | None = None, outputs: list[str] | None = None,
+                      base_sha: str | None = None, analysis_root: Path | None = None) -> tuple[dict, dict]:
+    """Evaluate the contract against local observations; only preflight owns allocation."""
     task_id = identifier(task_id)
     if not isinstance(role, str) or role not in ROLES:
         raise ValueError("Unknown engineering role")
@@ -362,11 +373,13 @@ def preflight(store: TaskStore, task_id: str, allowed: list[str], checks: list[s
             errors.append("Input is absent from the candidate base: " + path + " (" + type(error).__name__ + ")")
     if errors:
         raise ValueError("; ".join(errors))
-    return {"kind": "engineering", "role": role, "allowed_paths": write, "read_scope": reads,
+    prepared = {"kind": "engineering", "role": role, "allowed_paths": write, "read_scope": reads,
             "dependencies": dependencies, "checks": checks, "inputs": inputs, "outputs": outputs,
             "input_contract": {"schema_version": 1, "base_sha": base_sha if role in READERS and base_sha else dev, "role": role,
                 "write_scope": write, "read_scope": reads, "dependencies": dependencies,
                 "acceptance_commands": checks, "acceptance_argv": commands, "inputs": input_records, "expected_outputs": outputs}}
+    capacity = {"limit": 2, "active_writers": [value["task_id"] for value in others], "free": max(0, 2 - len(others))}
+    return prepared, capacity
 
 
 def changed_path_errors(value: dict, root: Path, paths: list[str]) -> list[str]:

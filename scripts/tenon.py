@@ -72,10 +72,10 @@ def start_workspace(repo: Path, task_id: str, topic: str, goal: str, allowed: li
                     verify_command: list[str] | None = None, local_only: bool = False,
                     workspace_root: Path | None = None, backend=None, *, kind: str | None = None,
                     role: str = "writer", read_scope: list[str] | None = None,
-                    inputs: list[str] | None = None, outputs: list[str] | None = None) -> dict:
+                    inputs: list[str] | None = None, outputs: list[str] | None = None, dry_run: bool = False) -> dict:
     from contextlib import nullcontext
     from task import start
-    from task_contract import READERS, allocation_lock, preflight
+    from task_contract import READERS, allocation_lock, inspect_preflight, preflight
 
     task_id = identifier(task_id)
     if role in READERS:
@@ -93,7 +93,7 @@ def start_workspace(repo: Path, task_id: str, topic: str, goal: str, allowed: li
     if verify_command is not None and (not isinstance(verify_command, list) or not verify_command
             or any(not isinstance(item, str) or not item for item in verify_command)):
         raise ValueError("Verification command must be a nonempty argv array")
-    store = TaskStore(repo)
+    store = TaskStore(repo, initialize=not dry_run)
     primary = worktrees(repo)[0]["path"]
     base_root = (workspace_root or primary.parent / ".tenon-worktrees" / store.repo_id).resolve()
     target = (base_root / task_id).resolve()
@@ -102,15 +102,22 @@ def start_workspace(repo: Path, task_id: str, topic: str, goal: str, allowed: li
         raise ValueError("Workspace path overlaps protected repository storage")
     branch = "dev-" + task_id + "-" + topic
     backend = backend or GitHub(repo)
-    with FileLease(store.root / "locks/workspace-start.lock"):
+    workspace_lock = nullcontext() if dry_run else FileLease(store.root / "locks/workspace-start.lock")
+    with workspace_lock:
         if store.path(task_id).exists() or store.path(task_id).with_suffix(".jsonl").exists():
             raise FileExistsError("Task exists; inspect or resume it")
-        backend.refresh()
+        if not dry_run:
+            backend.refresh()
         base = git(repo, "rev-parse", "origin/dev").decode().strip()
         intent = store.root / "operations/workspace-setup" / (task_id + ".json")
         prior = json.loads(intent.read_text(encoding="utf-8")) if intent.exists() else None
-        from host_profile import bind_verifier
-        verifier = bind_verifier(repo, verify_command, prior.get("contract") if prior else None)
+        if dry_run and prior is not None:
+            raise ValueError("Interrupted setup already exists; inspect or resume its recorded contract")
+        if dry_run:
+            verifier = {"verify_command": verify_command}
+        else:
+            from host_profile import bind_verifier
+            verifier = bind_verifier(repo, verify_command, prior.get("contract") if prior else None)
         requested = "general" if kind == "legacy" else kind
         if prior and "kind" not in prior.get("contract", {}):
             if requested not in {None, "general"}:
@@ -122,10 +129,15 @@ def start_workspace(repo: Path, task_id: str, topic: str, goal: str, allowed: li
             raise ValueError("Existing setup task kind is unsupported")
         if effective_kind != "engineering" and (role != "writer" or read_scope is not None or inputs is not None or outputs is not None):
             raise ValueError("Role/read/input/output contracts require engineering task kind")
-        manager = allocation_lock(store) if effective_kind == "engineering" else nullcontext(None)
+        manager = allocation_lock(store) if effective_kind == "engineering" and not dry_run else nullcontext(None)
         with manager as ticket:
-            prepared = preflight(store, task_id, allowed, checks, dependencies or [], role=role,
-                read_scope=read_scope, inputs=inputs, outputs=outputs, base_sha=base, allocation=ticket) if effective_kind == "engineering" else None
+            prepared, capacity = None, None
+            if effective_kind == "engineering":
+                options = {"role": role, "read_scope": read_scope, "inputs": inputs, "outputs": outputs, "base_sha": base}
+                if dry_run:
+                    prepared, capacity = inspect_preflight(store, task_id, allowed, checks, dependencies or [], **options)
+                else:
+                    prepared = preflight(store, task_id, allowed, checks, dependencies or [], allocation=ticket, **options)
             selected_allowed = prepared["allowed_paths"] if prepared else allowed
             selected_checks = prepared["checks"] if prepared else checks
             selected_dependencies = prepared["dependencies"] if prepared else dependencies or []
@@ -139,6 +151,14 @@ def start_workspace(repo: Path, task_id: str, topic: str, goal: str, allowed: li
                 contract.update(role=role, read_scope=prepared["read_scope"], inputs=prepared["inputs"], outputs=prepared["outputs"])
             existing = subprocess.run(["git", "-C", str(repo), "show-ref", "--verify", "--quiet", "refs/heads/" + branch],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+            if dry_run:
+                if existing or target.exists() or any(item["path"] == target for item in worktrees(repo)):
+                    raise FileExistsError("Workspace or branch already exists")
+                return {"schema_version": 1, "kind": "workspace-start-preview", "status": "READY",
+                        "dry_run": True, "base_sha": base, "base_qualification": "local origin/dev observation",
+                        "branch": branch, "worktree": str(target), "contract": contract, "capacity": capacity,
+                        "acceptance_argv": prepared["input_contract"]["acceptance_argv"] if prepared else None,
+                        "qualification": "Advisory local checks only; actual start refreshes dev, binds its verifier and rechecks allocation."}
             if prior:
                 if (prior.get("state") != "CREATING" or prior.get("contract") != contract
                         or prior.get("repository") != backend.name or prior.get("worktree") != str(target)
@@ -636,6 +656,7 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--dependency", action="append", default=[])
     start.add_argument("--verify-command-json")
     start.add_argument("--local-only", action="store_true")
+    start.add_argument("--dry-run", action="store_true", help="Preview the contract from local state without creating resources")
     start.add_argument("--workspace-root", type=Path, help="Explicit workspace root, primarily for controlled environments")
     start.add_argument("--kind", choices=("engineering", "general", "legacy"), help="New tasks default to engineering; untagged interrupted setups retain their original policy")
     start.add_argument("--role", choices=("writer", "integrator", "coordinator", "reviewer"), default="writer")
@@ -733,7 +754,7 @@ def main(argv: list[str] | None = None) -> int:
             value = start_workspace(repo, args.id, args.topic, args.goal, args.allow, args.check,
                 args.dependency, json.loads(args.verify_command_json) if args.verify_command_json else None,
                 args.local_only, args.workspace_root, kind=args.kind, role=args.role,
-                read_scope=args.read_allow, inputs=args.input, outputs=args.output)
+                read_scope=args.read_allow, inputs=args.input, outputs=args.output, dry_run=args.dry_run)
         elif args.task_command == "context":
             from task_context import context
             value = context(repo,args.id)

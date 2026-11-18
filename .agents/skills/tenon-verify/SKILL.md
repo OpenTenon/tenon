@@ -8,8 +8,8 @@ description: Verify a Tenon implementation or engineering-tool change and qualif
 Input: candidate checkout, required verification level and any task ID/existing evidence.
 
 1. Use `git tenon doctor --full` for stable-entry/host/workflow readiness. Missing prerequisites remain BLOCKED; do not install tools as part of diagnosis.
-2. Run `make verify` for complete fast verification. Full local execution remains unsharded. CI covers the Linux groups and two Windows shards with a strict aggregate gate.
-3. Inspect summary, complete case inventory, actual outcomes, skip reasons and failed logs. PASS for a selected shard is partial evidence; BLOCKED, NOT_RUN, skipped required jobs and dry runs do not pass full handoff.
+2. For feedback while editing, use `python3 scripts/engineering_tests.py --module test_task_contracts` in the task checkout. Repeat `--module` to select more complete modules. Then run `make verify` for complete fast verification. Full local execution remains unsharded. CI covers the Linux groups and two Windows shards with a strict aggregate gate.
+3. Inspect summary, complete case inventory, actual outcomes, skip reasons and failed logs. PASS for selected modules or a shard is partial evidence; BLOCKED, NOT_RUN, skipped required jobs and dry runs do not pass full handoff.
 4. Match evidence to HEAD, the complete worktree fingerprint and frozen host inputs. Only unchanged valid input may reuse a full result. Use `git tenon task context --id <id>` to inspect current qualification and `git tenon task handoff --id <id> --evidence <summary.json>` for durable handoff.
 5. State what actually executed, failed or remains unrun. Preserve reports under build/verification for archive-first cleanup. Behavioral CI, offline Skill fixtures and historical archives do not establish real-PDK or manufacturing signoff.
 

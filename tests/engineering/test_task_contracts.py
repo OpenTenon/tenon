@@ -320,6 +320,47 @@ class IntegratedEntryTests(ContractFixture):
         self.assertEqual(before,self.run_git("for-each-ref"))
         self.assertFalse((self.store.root/"operations/workspace-setup/invalid-design.json").exists())
 
+    def test_workspace_preview_reads_normalized_contract_without_creating_resources(self):
+        from test_entrypoint import Backend
+        before = {path.relative_to(self.store.root): path.read_bytes()
+                  for path in self.store.root.rglob("*") if path.is_file()}
+        refs = self.run_git("for-each-ref")
+        registered = self.run_git("worktree", "list", "--porcelain")
+        with (mock.patch.object(Backend, "refresh", side_effect=AssertionError("preview contacted origin")),
+              mock.patch("host_profile.bind_verifier", side_effect=AssertionError("preview bound a verifier"))):
+            result = self.entry("preview", ["./scripts//a.py"], dry_run=True, inputs=["scripts/a.py"])
+        self.assertEqual(result["status"], "READY")
+        self.assertIs(result["dry_run"], True)
+        self.assertEqual(result["base_sha"], self.base)
+        self.assertEqual(result["contract"]["allowed_paths"], ["scripts/a.py"])
+        self.assertEqual(result["acceptance_argv"], [["make", "verify"]])
+        self.assertEqual(result["capacity"], {"limit": 2, "active_writers": [], "free": 2})
+        self.assertFalse(Path(result["worktree"]).exists())
+        self.assertEqual(refs, self.run_git("for-each-ref"))
+        self.assertEqual(registered, self.run_git("worktree", "list", "--porcelain"))
+        self.assertEqual(before, {path.relative_to(self.store.root): path.read_bytes()
+                                  for path in self.store.root.rglob("*") if path.is_file()})
+        actual = self.entry("preview", ["scripts/a.py"], inputs=["scripts/a.py"])
+        self.assertEqual(actual["worktree"], result["worktree"])
+        self.assertTrue(Path(actual["worktree"]).is_dir())
+
+    def test_workspace_preview_refuses_conflicting_scope_and_dependencies_without_resource_writes(self):
+        from test_entrypoint import Backend
+        self.entry("scope-owner", ["scripts/a.py"])
+        before = {path.relative_to(self.store.root): path.read_bytes()
+                  for path in self.store.root.rglob("*") if path.is_file()}
+        refs = self.run_git("for-each-ref")
+        registered = self.run_git("worktree", "list", "--porcelain")
+        with mock.patch.object(Backend, "refresh", side_effect=AssertionError("preview contacted origin")):
+            with self.assertRaisesRegex(contract.AllocationBusy, "scope is reserved"):
+                self.entry("scope-preview", ["scripts/a.py"], dry_run=True)
+            with self.assertRaisesRegex(ValueError, "[Dd]ependenc"):
+                self.entry("dependency-preview", ["scripts/b.py"], dry_run=True, dependencies=["missing-dependency"])
+        self.assertEqual(refs, self.run_git("for-each-ref"))
+        self.assertEqual(registered, self.run_git("worktree", "list", "--porcelain"))
+        self.assertEqual(before, {path.relative_to(self.store.root): path.read_bytes()
+                                  for path in self.store.root.rglob("*") if path.is_file()})
+
     def test_explicit_general_preserves_content_interfaces(self):
         value = self.entry("general",["rtl/*"],kind="general")
         self.assertEqual(value["kind"],"general")

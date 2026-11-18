@@ -68,6 +68,63 @@ class Second(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text(encoding="utf-8")), report)
         self.assertTrue(path.is_relative_to(self.root.resolve() / "build/verification"))
 
+    def test_focused_cli_runs_complete_selected_modules_and_rejects_full_evidence(self):
+        first = self.module("class First(unittest.TestCase):\n"
+                            "    def test_a(self): pass\n    def test_b(self): pass\n")
+        second = self.module("class Second(unittest.TestCase):\n    def test_c(self): pass\n")
+        omitted = self.module("class Omitted(unittest.TestCase):\n"
+                              "    def test_fails_if_executed(self): self.fail('unselected')\n")
+        report_path = self.root / "build/verification/focused.json"
+        proc = subprocess.run([sys.executable, str(ROOT / "scripts/engineering_tests.py"),
+                               "--root", str(self.root), "--report", str(report_path),
+                               "--module", second, "--module", first], capture_output=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr.decode(errors="replace"))
+        report = json.loads(report_path.read_bytes())
+        self.assertEqual(report["kind"], "engineering-unittest-focus")
+        self.assertIs(report["partial"], True)
+        self.assertEqual(report["counts"]["discovered"], 4)
+        self.assertEqual(report["counts"]["selected"], 3)
+        self.assertEqual({row["module"] for row in report["cases"]}, {first, second})
+        self.assertTrue(any(case.startswith(omitted + ".") for case in report["discovery"]["case_ids"]))
+        self.assertTrue(all(row["status"] == "PASS" for row in report["cases"]))
+        with self.assertRaisesRegex(ValueError, "Partial"):
+            engineering_common.validate_evidence(report_path, self.root)
+
+    def test_focused_report_cannot_qualify_as_attached_full_evidence(self):
+        name = self.module("class Focused(unittest.TestCase):\n    def test_a(self): pass\n")
+        partial_path, partial = self.run_fixture(modules=[name])
+        self.assertEqual(partial["status"], "PASS")
+        result = engineering_common.new_summary(self.root, "verification")
+        check = engineering_common.execute([sys.executable, "-c", "print('fixture')"],
+                                           self.root, partial_path.parent / "tools.log", check_id="tools-test")
+        check["test_report"] = {"path": partial_path.name, "sha256": engineering_common.digest(partial_path)}
+        result["checks"].append(check)
+        full_path = partial_path.parent / "verification.json"
+        engineering_common.finish_summary(result, self.root, full_path)
+        with self.assertRaisesRegex(ValueError, "Partial or invalid test report"):
+            engineering_common.validate_evidence(full_path, self.root, {"tools-test"})
+
+        # A report reference still needs validation if its check has no command.
+        reference = check.pop("test_report")
+        check["id"] = "other-executed-check"
+        other = engineering_common.new_summary(self.root, "verification")
+        other["checks"] = [check, {"id": "tools-test", "status": "PASS", "required": True, "test_report": reference}]
+        engineering_common.finish_summary(other, self.root, full_path)
+        with self.assertRaisesRegex(ValueError, "Partial or invalid test report"):
+            engineering_common.validate_evidence(full_path, self.root, {"tools-test"})
+
+    def test_focused_selection_fails_closed_on_unknown_duplicate_or_sharded_options(self):
+        name = self.module("class Known(unittest.TestCase):\n"
+                           "    def test_fails_if_executed(self): self.fail('invalid selection')\n")
+        _, report = self.run_fixture(modules=[name, "test_missing"])
+        self.assertEqual(report["status"], "FAIL")
+        self.assertEqual(report["tests_run"], 0)
+        self.assertEqual(report["counts"]["selected"], 0)
+        with self.assertRaisesRegex(ValueError, "unique modules"):
+            self.run_fixture(modules=[name, name])
+        with self.assertRaisesRegex(ValueError, "CI shard"):
+            self.run_fixture(modules=[name], shard_index=0, shard_count=2)
+
     def test_fail_error_expected_failure_unexpected_success_and_subtests(self):
         self.module("""class Cases(unittest.TestCase):
     def test_fail(self): self.fail("fixture failure")
