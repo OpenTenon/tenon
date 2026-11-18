@@ -362,6 +362,39 @@ discussions, forbid dev/main force pushes/deletion and restrict main to its huma
 maintainer. GitHub cannot distinguish a person from automation holding that user's
 credential, so the controller never exposes main merge operations.
 
+## Local fixture profiling and routing weights
+
+`python3 scripts/fixture_benchmark.py` is a zero-execution plan by default. Use
+`python3 scripts/fixture_benchmark.py --run --report build/verification/fixture-profile.json`
+to run the four default engineering modules once in a fresh native child; select
+existing modules with `--modules`. Its partial local report separates discovery,
+case setup, actual method, teardown/cleanup, inclusive case and process wall time.
+Git counts/time cover directly observed subprocesses; worker-internal Git, CPU
+and billing remain unknown. Phase intervals can nest; inclusive case duration
+avoids double counting. Reports cannot overwrite existing/tracked evidence or
+escape build/verification, and cannot replace full verification/CI handoff.
+
+The private per-process sealed-profile candidate was tested in three fixed
+same-machine A/B pairs (AB/BA/AB), all 144 cases passing in each child. Complete
+process medians were 436.175s fresh versus 423.413s candidate (2.926% improvement).
+It missed the declared 10% retention threshold, so the cache, flags and fixture
+changes were removed. All six reports and the reproducible rejected source/diff
+are retained privately with the engineering task; no real init/worktree/exit,
+sharing, permission, assertion or CI behavior was removed.
+
+The two-Windows module map now uses the single successful native dev 0f203e89
+run 44228097595 attempt1 (436 actual IDs; Python3.13.17) after all original
+runtime tests/fixtures/runner/gate were restored byte-for-byte. Only
+test_ci_contract and test_maintenance move from 0 to 1. Observed case sums
+313.798/256.737s become predicted 285.716/284.819s with 133/303 selected cases.
+These historical hosted weights are separate from the rejected local A/B and
+are not a new candidate timing, wall-time gain or formal benchmark. The new
+uninvoked profiler can add a source payload to generic source-copy fixtures;
+that small added cost is unmeasured. Fresh candidate verification and CI still
+qualify current behavior. Both actual native occupancy cases retain their
+original module orientation, full independent discovery/union gates remain,
+and unknown future modules keep stable-hash assignment with unknown weight.
+
 ## Archives and automatic cleanup
 
 After merged dev CI succeeds:
