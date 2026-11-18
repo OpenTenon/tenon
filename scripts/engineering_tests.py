@@ -258,13 +258,21 @@ def report_destination(root: Path, path: Path) -> Path:
 
 
 def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None, stream=None,
-              shard_index: int | None = None, shard_count: int | None = None) -> tuple[Path, dict]:
+              shard_index: int | None = None, shard_count: int | None = None,
+              modules: list[str] | None = None) -> tuple[Path, dict]:
     """Default full execution; explicit partial runs own complete modules only."""
-    partial = shard_options(shard_index, shard_count)
+    sharded = shard_options(shard_index, shard_count)
+    focused = modules is not None
+    if focused and (sharded or not isinstance(modules, list) or not modules
+                    or any(not isinstance(name, str) or not name for name in modules)
+                    or len(modules) != len(set(modules))):
+        raise ValueError("Select unique modules explicitly, without CI shard options")
+    partial = sharded or focused
+    kind = "engineering-unittest-focus" if focused else "engineering-unittest-shard" if sharded else "engineering-unittest"
     root = root.resolve()
     identifier = run_id()
     report_path = report_destination(root, report_path or root / "build/verification" / ("unittest-" + identifier) / "summary.json")
-    report = {"schema_version": 1, "kind": "engineering-unittest-shard" if partial else "engineering-unittest",
+    report = {"schema_version": 1, "kind": kind,
               "partial": partial, "ci": None, "run_id": identifier,
               "started_at": utc_now(), "completed_at": None, "duration_seconds": None,
               "source": None, "source_after": None, "source_unchanged": None,
@@ -276,7 +284,8 @@ def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None
               "qualification": "Complete local unittest observation; skips and expected failures remain explicit; no physical signoff"}
     def checkpoint():
         counts = Counter(row["status"] for row in report["cases"])
-        report["counts"] = {"discovered": len(report["discovery"]["case_ids"]), "selected": len(report.get("shard", {}).get("selected_ids", report["discovery"]["case_ids"])),
+        selection = report.get("shard", report.get("focus", {}))
+        report["counts"] = {"discovered": len(report["discovery"]["case_ids"]), "selected": len(selection.get("selected_ids", report["discovery"]["case_ids"])),
                             "started": sum(row["started_at"] is not None for row in report["cases"]),
                             "outcomes": {state: counts[state] for state in OUTCOMES}}
         write_json(report_path, report)
@@ -295,7 +304,7 @@ def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None
         report["discovery"].update(case_ids=identities, errors=list(loader.errors), complete=not loader.errors,
             duplicate_ids=sorted(identity for identity, count in Counter(identities).items() if count > 1))
         report["discovery"]["cases"] = [{key: row[key] for key in ("id", "module", "class")} for row in report["cases"]]
-        if partial:
+        if sharded:
             allocation, allocation_sha = load_allocation(root)
             assignments = module_assignments(report["cases"], allocation)
             selected = [row for row in report["cases"] if module_owner(row["module"], allocation)[0] == shard_index]
@@ -305,6 +314,17 @@ def run_tests(root: Path = ROOT, *, report_path: Path | None = None, loader=None
             suite = select_suite(suite, set(report["shard"]["selected_ids"]))
             if not selected:
                 report["errors"].append("The requested shard selected zero cases")
+        if focused:
+            report["qualification"] = "Partial local module observation; not full or CI verification evidence"
+            available = {row["module"] for row in report["cases"]}
+            missing = set(modules) - available
+            selected = [row for row in report["cases"] if row["module"] in modules] if not missing else []
+            report["focus"] = {"modules": sorted(modules), "selected_ids": [row["id"] for row in selected]}
+            report["cases"] = selected
+            if missing:
+                report["errors"].append("Unknown test modules: " + ", ".join(sorted(missing)))
+            elif selected:
+                suite = select_suite(suite, set(report["focus"]["selected_ids"]))
         if not identities:
             report["errors"].append("Discovery found zero test cases")
         if report["discovery"]["duplicate_ids"]:
@@ -353,10 +373,11 @@ def main(argv=None) -> int:
     parser.add_argument("--report", type=Path, help="Path inside root/build/verification; tracked files and escaping links are refused")
     parser.add_argument("--shard-index", type=int, choices=(0, 1))
     parser.add_argument("--shard-count", type=int, choices=(2,))
+    parser.add_argument("--module", action="append", help="Run a complete local test module; may be repeated")
     args = parser.parse_args(argv)
     try:
         path, report = run_tests(args.root, report_path=args.report,
-                                shard_index=args.shard_index, shard_count=args.shard_count)
+                                shard_index=args.shard_index, shard_count=args.shard_count, modules=args.module)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print("FAIL: " + str(error), file=sys.stderr)
         return 1
