@@ -71,6 +71,37 @@ class GitHub:
             "body":task.get("pr_body",task["goal"]+"\n\nValidation: committed-candidate make verify. Main merging remains human."),"draft":False})
 
     def latest_run(self, sha: str, event: str, number: int | None = None):
+        run = self._selected_run(sha,event,number)
+        if run is None:
+            return None
+        run_id,attempt = run.get("id"),run.get("run_attempt")
+        if type(run_id) is not int or run_id <= 0 or type(attempt) is not int or attempt <= 0:
+            raise ValueError("CI run/attempt identity is missing or invalid")
+        jobs, page = [], 1
+        while True:
+            response = self.api(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100&page={page}")
+            jobs += response["jobs"]
+            if len(response["jobs"])<100:
+                break
+            page += 1
+        if run.get("status")=="completed" and run.get("conclusion")=="success":
+            # An exact a1 endpoint must not authorize a1 after a2 started while
+            # the jobs were loading. Check the current attempt and the same
+            # latest-run/PR association policy again, only for possible success.
+            current = self.api(f"actions/runs/{run_id}")
+            if (current.get("id"),current.get("run_attempt")) != (run_id,attempt):
+                return None
+            latest = self._selected_run(sha,event,number)
+            if latest is None or (latest.get("id"),latest.get("run_attempt")) != (run_id,attempt):
+                return None
+            keys = ("head_sha","event","path","status","conclusion")
+            if any(current.get(key)!=latest.get(key) for key in keys):
+                return None
+            run = latest
+        return {"workflow_run":run,"jobs":jobs}
+
+    def _selected_run(self, sha: str, event: str, number: int | None):
+        """The existing event, workflow and live same-repository PR selection."""
         items = self.api(f"actions/runs?head_sha={sha}&event={event}&per_page=100")["workflow_runs"]
         items = [item for item in items if item["path"].split("@")[0]==".github/workflows/ci.yml"]
         if number is not None:
@@ -90,15 +121,7 @@ class GitHub:
             items = associated
         if not items:
             return None
-        run = max(items,key=lambda item:(item["id"],item["run_attempt"]))
-        jobs, page = [], 1
-        while True:
-            response = self.api(f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100&page={page}")
-            jobs += response["jobs"]
-            if len(response["jobs"])<100:
-                break
-            page += 1
-        return {"workflow_run":run,"jobs":jobs}
+        return max(items,key=lambda item:(item["id"],item["run_attempt"]))
 
     def merge(self, number: int, sha: str):
         return self.api(f"pulls/{number}/merge","PUT",{"sha":sha,"merge_method":"merge"})

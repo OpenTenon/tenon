@@ -39,7 +39,57 @@ def event(revision,second,status,action="observation"):
     return {"revision":revision,"at":f"2026-11-16T10:00:{second:02d}Z","action":action,"state":{"status":status}}
 
 
+def timed_task(name="timed"):
+    from ci_observation import accepted_record
+    from test_ci_observation import snapshot,HEAD,DEV,REPO
+    row=task(name)
+    row.update(repository=REPO,head_sha=HEAD,green_dev_sha=DEV,started_at="2026-11-16T09:00:00Z",
+        delivered_at="2026-11-16T10:00:00Z",cleaned_at="2026-11-16T10:02:00Z",
+        delivery={"merged":True,"head_sha":HEAD,"merge_commit_sha":DEV,"merged_at":"2026-11-16T10:00:00Z"})
+    for field,kind,clock,observed in (("pr_ci","pull_request","09:59:","2026-11-16T09:59:20Z"),
+                                     ("dev_ci","push","10:01:","2026-11-16T10:01:20Z")):
+        value=snapshot(kind)
+        for job in value["jobs"]:
+            job["started_at"]=job["started_at"].replace("10:00:",clock)
+            job["completed_at"]=job["completed_at"].replace("10:00:",clock)
+        row[field]=accepted_record(value,task_id=name,repository=REPO,candidate_head=HEAD,
+            accepted_head=HEAD if kind=="pull_request" else DEV,event=kind,observed_at=observed)
+    row["delivery"]["pr_ci"]=copy.deepcopy(row["pr_ci"])
+    return row
+
+
 class ReducerTests(unittest.TestCase):
+    def test_monthly_ci_columns_separate_provider_controller_and_cleanup_with_legacy_unknowns(self):
+        measured=timed_task(); legacy=task("legacy")
+        rows=copy.deepcopy([measured,legacy])
+        events={"legacy":[{"revision":2,"action":"dev-ci-green","at":"2026-11-16T11:02:00Z","state":{}}]}
+        report=metrics.summarize(rows,events=events,as_of=NOW)
+        monthly=metrics.improvement_items(report,"2026-11")["ci_observations"]
+        current=next(row for row in monthly["per_task"] if row["task_id"]=="timed")
+        self.assertEqual(current["pull_request"]["hosted_span_seconds"],15)
+        self.assertEqual(current["merged_dev"]["all_job_wall_seconds"],60)
+        self.assertEqual(current["merged_dev"]["windows_job_wall_seconds"],20)
+        self.assertEqual(current["merged_dev"]["linux_job_wall_seconds"],40)
+        self.assertEqual(current["merged_dev"]["ci_complete_to_confirmation_seconds"],5)
+        self.assertEqual(current["merged_dev"]["confirmation_to_cleaned_seconds"],40)
+        self.assertEqual(current["pull_request"]["confirmation_to_cleaned_seconds"],160)
+        metric=monthly["stages"]["merged_dev"]["hosted_span_seconds"]
+        self.assertEqual((metric["samples"],metric["missing"],metric["p50_seconds"]),(1,1,15))
+        old=next(row for row in report["per_task"] if row["task_id"]=="legacy")
+        self.assertIsNone(old["ci_observations"]["merged_dev"]["hosted_span_seconds"])
+        self.assertEqual(old["stages_seconds"]["green_to_cleaned"],480)
+        self.assertEqual(rows,[measured,legacy])
+
+    def test_foreign_accepted_head_is_unknown_and_cleanup_stage_never_grants_authority(self):
+        row=timed_task()
+        row["green_dev_sha"]="d"*40
+        row["cleanup"]={"remote_deleted":True,"worktree_removed":True,"local_deleted":True,"tracking_deleted":True}
+        before=copy.deepcopy(row)
+        report=metrics.summarize([row],observations={"timed":{"applicable":True,"directory":True}},as_of=NOW)
+        self.assertIsNone(report["per_task"][0]["ci_observations"]["merged_dev"]["hosted_span_seconds"])
+        self.assertEqual(report["resource_health"]["cleaned_but_resources_present"],["timed"])
+        self.assertEqual(row,before)
+
     def test_twenty_confirmed_deliveries_exclude_other_finished_records(self):
         rows=[task(str(index)) for index in range(19)]
         unfinished=task("unmerged",False,False);unfinished["completed_at"]=NOW
@@ -134,6 +184,18 @@ class ReducerTests(unittest.TestCase):
 
 
 class CollectorTests(RepositoryFixture):
+    def test_monthly_ci_receipts_are_collected_without_network_store_initialization_or_mutation(self):
+        store,value=self.seed()
+        measured=timed_task("observed")
+        store.mutate("observed",lambda value:{**value,**{key:item for key,item in measured.items() if key!="task_id"}},"timed-fixture")
+        before=self.files()
+        with mock.patch("task_backends.GitHub.api",side_effect=AssertionError("metrics queried CI")), \
+                mock.patch("task_store.TaskStore.__init__",side_effect=AssertionError("metrics initialized a store")):
+            report=metrics.collect(self.root,as_of=NOW)
+            monthly=metrics.improvement_items(report,"2026-11")
+        self.assertEqual(monthly["ci_observations"]["per_task"][0]["merged_dev"]["hosted_span_seconds"],15)
+        self.assertEqual(self.files(),before)
+
     def files(self):
         return {path.relative_to(self.root).as_posix():hashlib.sha256(path.read_bytes()).hexdigest()
                 for path in self.root.rglob("*") if path.is_file()}

@@ -520,6 +520,23 @@ completed_at records. Full-run first-pass uses timestamp-ordered executed group=
 PASS/FAIL observations, distinguishes partial/blocked/dry runs and preserves
 same-run contradictions as unknown. Stage walltimes and nearest-rank p50/p95 carry
 sample/missing counts. CI execution is unknown when exact timestamps are absent.
+Accepted PR and merged-dev CI records add a bounded `observation` to the existing
+`pr_ci`/`dev_ci` fields. It binds the task/repository, candidate and provider heads,
+event, run ID and exact attempt to allowlisted job outcomes, clocks and labels.
+Success is re-observed before use; an advancing rerun or newer selected run cannot
+reuse an earlier successful attempt. Existing live CI and deletion gates remain
+authoritative; timing records never grant permission.
+
+`metrics --month` reads these records locally and separates PR/dev job span
+(earliest job start to latest completion), summed job wall seconds (including
+Windows/Linux where labels qualify), CI completion-to-controller confirmation and
+confirmation-to-CLEANED. The PR confirmation interval also includes later dev
+gates. Repeated acceptance of the same attempt preserves its first observation;
+legacy compact records never acquire a fabricated historical clock on resume.
+Missing, foreign, ambiguous or negative intervals remain null. Provider run
+`updated_at`, journal persistence times and file mtimes are never hosted runtime
+or queue-time substitutes. Raw legacy fields and their observed wait metrics stay
+unchanged. Metrics make no additional CI API calls or repairs.
 Current blockers are separated from historical errors on recovered tasks; stored
 PIDs and command lease files do not prove liveness. Explicit unknown intervention
 and rework counts remain unknown, with booleans/negative values rejected.

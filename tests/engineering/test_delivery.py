@@ -82,6 +82,13 @@ class DevDeliveryTests(unittest.TestCase):
             self.assertTrue(self.assess())
             self.run[key] = original
 
+    def test_optional_timing_clocks_never_replace_or_weaken_the_ci_gate(self):
+        self.run.update(created_at="invalid",updated_at="2035-01-01T00:00:00Z")
+        self.jobs[0].update(started_at="invalid",completed_at=None,labels=None)
+        self.assertFalse(self.assess())
+        self.jobs[0]["conclusion"]="failure"
+        self.assertTrue(self.assess())
+
 
 if __name__ == "__main__":
     unittest.main()

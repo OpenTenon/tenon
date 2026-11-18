@@ -126,6 +126,20 @@ def _full_attempts(task):
             "duration_seconds": sum(durations) if durations and not ambiguous and all(value is not None for value in durations) else None}
 
 
+def _ci_timings(task):
+    from ci_gate import REQUIRED_JOBS
+    from ci_observation import phase_metrics
+    delivery = task.get("delivery") if isinstance(task.get("delivery"), dict) else {}
+    source = task.get("source") if isinstance(task.get("source"), dict) else {}
+    candidate = delivery.get("head_sha") or task.get("head_sha") or source.get("sha")
+    cleaned = task.get("cleaned_at") if task.get("status") == "CLEANED" else None
+    common = {"task_id":task["task_id"], "repository":task.get("repository"), "candidate_head":candidate,
+              "required_jobs":REQUIRED_JOBS | {"ci-required"}, "cleaned_at":cleaned}
+    return {"pull_request":phase_metrics([task.get("pr_ci"),delivery.get("pr_ci")], accepted_head=candidate,
+                                         event="pull_request", **common),
+            "merged_dev":phase_metrics([task.get("dev_ci")],accepted_head=task.get("green_dev_sha"),event="push",**common)}
+
+
 def summarize(tasks, events=None, queues=None, observations=None, as_of=None, worker=None, diagnostics=None):
     """Pure reducer. Inputs are snapshots; missing values never become zero successes."""
     now = _as_of(as_of)
@@ -158,6 +172,10 @@ def summarize(tasks, events=None, queues=None, observations=None, as_of=None, wo
                  "merge_to_cleaned": elapsed(delivered, task.get("cleaned_at")) if merged and cleaned else None,
                  "green_to_cleaned": elapsed(green, task.get("cleaned_at")) if cleaned else None,
                  "actual_ci_execution": resource.get("ci_execution_seconds")}
+        ci_timings = _ci_timings(task)
+        from ci_observation import TIMINGS
+        for phase, values in ci_timings.items():
+            stage.update({phase+"_"+name:values[name] for name in TIMINGS})
         for name, value in stage.items():
             stage_values.setdefault(name, []).append(value)
         applicable = resource.get("applicable", task.get("owns_workspace", True))
@@ -176,6 +194,7 @@ def summarize(tasks, events=None, queues=None, observations=None, as_of=None, wo
                "failure_stage": "cleanup" if merged and current_failure else "delivery_or_verification" if current_failure else None,
                "historical_failure_events": len(failed_events), "historical_failure_revisions": [event.get("revision") for event in failed_events],
                "first_full_verification": full, "stages_seconds": stage,
+               "ci_observations":ci_timings,
                "pending_cleanup_age_seconds": elapsed(delivered, now.isoformat()) if merged and not cleaned else None,
                "open_pr_ci_wait_age_seconds": elapsed(pr_open, now.isoformat()) if pr_open else None,
                "queue_state": queue.get("state"), "queue_stage": queue.get("stage"), "queue_generation": queue.get("generation"),
@@ -439,5 +458,10 @@ def improvement_items(report, month=None):
     if unknown:
         items.append({"code": "explicit-counter-coverage", "priority": "P2", "task_ids": [],
             "action": "Record explicit future intervention/rework observations; do not backfill estimates", "evidence": unknown})
-    return {"schema_version": 1, "month": month, "timezone": "UTC", "items": items,
+    from ci_observation import TIMINGS
+    ci = {"per_task":[{"task_id":row["task_id"],**copy.deepcopy(row.get("ci_observations",{}))} for row in selected],
+          "stages":{phase:{name:distribution([row.get("ci_observations",{}).get(phase,{}).get(name) for row in selected],len(selected))
+                           for name in TIMINGS} for phase in ("pull_request","merged_dev")},
+          "qualification":"Local accepted-attempt observations only; hosted jobs, controller confirmation and post-confirmation cleanup are separate. Missing/legacy/foreign/invalid clocks remain unknown; no remote query or repair."}
+    return {"schema_version": 1, "month": month, "timezone": "UTC", "items": items, "ci_observations":ci,
             "qualification": "Evidence-linked suggestions only; no repairs or delivery authorization"}

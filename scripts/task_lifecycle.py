@@ -56,6 +56,7 @@ from task_archive import archive_task, deploy_controller, expected_head, ownersh
 from controller_leases import integration_scope
 from task_store import FileLease, TaskStore
 from task_backends import GitHub, command, repository_name, directory_delete_ready, WorkspaceBackend
+from ci_observation import accepted_record, recovered_pr_record
 
 
 def ci_green(snapshot: dict | None, sha: str, event: str) -> bool:
@@ -205,9 +206,11 @@ class Lifecycle:
         if existing and existing.get("merged"):
             if git(root,"diff","--name-only","HEAD","--").strip() or existing["head"]["sha"]!=expected_head(task):
                 raise ValueError("Merged task has new work; create a new fix branch")
+            retained = recovered_pr_record(task.get("pr_ci"),existing["head"]["sha"])
             self.update("merge-recovered",status="MERGED",delivered_at=existing["merged_at"],delivery={
                 "number":existing["number"],"html_url":existing["html_url"],"merged":True,
-                "head_sha":existing["head"]["sha"],"merge_commit_sha":existing["merge_commit_sha"],"merged_at":existing["merged_at"]})
+                "head_sha":existing["head"]["sha"],"merge_commit_sha":existing["merge_commit_sha"],"merged_at":existing["merged_at"],
+                **({"pr_ci":retained} if retained else {})})
             return self.after_merge()
         self.backend.refresh()
         observed_base = git(root,"rev-parse","origin/dev").decode().strip()
@@ -278,8 +281,10 @@ class Lifecycle:
         if not pull:
             pull = self.backend.create_pull(self.task())
         if pull.get("merged"):
+            retained = recovered_pr_record(self.task().get("pr_ci"),pull["head"]["sha"])
             self.update("existing-merge-observed",delivery={"number":pull["number"],"html_url":pull["html_url"],"merged":True,
-                "head_sha":pull["head"]["sha"],"merge_commit_sha":pull["merge_commit_sha"],"merged_at":pull["merged_at"]},status="MERGED")
+                "head_sha":pull["head"]["sha"],"merge_commit_sha":pull["merge_commit_sha"],"merged_at":pull["merged_at"],
+                **({"pr_ci":retained} if retained else {})},status="MERGED")
             return self.after_merge()
         self.update("pr-observed",status="WAITING_CI",pr_number=pull["number"],pr_url=pull["html_url"],head_sha=head)
         snapshot = self.backend.latest_run(head,"pull_request",pull["number"])
@@ -304,7 +309,9 @@ class Lifecycle:
             errors = integration_errors(self.store, self.task(), current_dev=latest_base, require_evidence=True)
             if errors:
                 raise ValueError("; ".join(errors))
-        self.update("merge-intent",status="MERGING",pr_ci={"run_id":snapshot["workflow_run"]["id"],"head_sha":head,"conclusion":"success"})
+        pr_ci = accepted_record(snapshot,task_id=self.task_id,repository=self.backend.name,candidate_head=head,
+            accepted_head=head,event="pull_request",observed_at=utc_now(),previous=self.task().get("pr_ci"))
+        self.update("merge-intent",status="MERGING",pr_ci=pr_ci)
         self.backend.merge(pull["number"],head)
         merged = self.backend.pull(pull["number"])
         if not merged.get("merged"):
@@ -312,7 +319,7 @@ class Lifecycle:
         self.update("merge-confirmed",status="MERGED",delivered_at=merged["merged_at"],delivery={
             "number":merged["number"],"html_url":merged["html_url"],"merged":True,"head_sha":head,
             "merge_commit_sha":merged["merge_commit_sha"],"merged_at":merged["merged_at"],
-            "pr_ci":{"run_id":snapshot["workflow_run"]["id"],"conclusion":"success"}})
+            "pr_ci":pr_ci})
         return self.after_merge()
 
     def after_merge(self) -> dict:
@@ -342,7 +349,9 @@ class Lifecycle:
             self.backend.diagnostics(snapshot,self.operations()/str(snapshot["workflow_run"]["id"]))
             self.update("dev-ci-failed",status="DEV_CI_FAILED",dev_ci=snapshot["workflow_run"])
             return {"status":"DEV_CI_FAILED","reason":"Keep resources; fix through a new dev task branch"}
-        self.update("dev-ci-green",status="DEV_GREEN",green_dev_sha=tip,dev_ci={"run_id":snapshot["workflow_run"]["id"],"head_sha":tip,"conclusion":"success"})
+        dev_ci = accepted_record(snapshot,task_id=self.task_id,repository=self.backend.name,candidate_head=head,
+            accepted_head=tip,event="push",observed_at=utc_now(),previous=self.task().get("dev_ci"))
+        self.update("dev-ci-green",status="DEV_GREEN",green_dev_sha=tip,dev_ci=dev_ci)
         return self.cleanup()
 
     def cleanup(self) -> dict:
