@@ -147,6 +147,22 @@ It starts in read-only mode. After a real task is merged, archived and CLEANED,
 task compensates for worker exit or a later login. Per-step timeouts still apply;
 the scheduling bound stops new iterations, never kills an active command.
 
+Hosts migrated to the current-user login resident keep the old scheduled task
+disabled. The existing host supervisor at `tenon/host/resident_worker.py` starts
+through its owned Startup shortcut and runs the installed controller when queued
+work or upkeep is due. `doctor --full` and `worker status` observe the same native
+process executable, exact arguments, Windows user and process start time, together
+with `operations/resident-worker.json` and the login shortcut. Idle heartbeats are
+valid for 180 seconds. WORKING can retain an older heartbeat while its live owned
+delivery child is verified. Missing, stale, foreign, disabled or retrying residents
+require attention. An enabled legacy schedule also blocks this resident mode.
+
+These diagnostics only read existing state. They report the supervisor separately
+from the bounded delivery worker's historical `worker-latest.json`. Inspect them
+on the native Windows host. A matching login shortcut is registration evidence;
+an actual reboot/login recovery exercise is a separate acceptance observation.
+Legacy scheduled hosts retain their existing health path until explicitly migrated.
+
 Network failures and sharing leases back off. Changed ownership, source, evidence,
 authorization or policy become durable BLOCKED entries. A managed worktree without
 its native archive receipt becomes WAITING_APP; the application must complete that

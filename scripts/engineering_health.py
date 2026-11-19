@@ -156,7 +156,7 @@ $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     return value
 
 
-def full_doctor(repo: Path, *, schedule_probe=None, distribution_probe=None) -> dict:
+def full_doctor(repo: Path, *, schedule_probe=None, distribution_probe=None, process_probe=None) -> dict:
     checks = []
     report = {"schema_version": 1, "kind": "engineering-health", "mode": "read-only", "checks": checks,
               "network_accessed": False, "qualification": "Local prerequisites and recorded identity; remote availability is not inferred",
@@ -256,52 +256,60 @@ def full_doctor(repo: Path, *, schedule_probe=None, distribution_probe=None) -> 
         add("host-verifier", "READY", "Registered verifier prerequisites and frozen inputs are readable; verifier was not executed", mode=mode, frozen_inputs=len(profile["inputs"]))
     except INSPECTION_ERRORS as error:
         add("host-verifier", "BLOCKED", str(error), next_commands=[["git", "-C", str(primary), "tenon", "host", "--help"]])
+    resident = None
     try:
         worker = _json(base / "worker.json")
         if not worker or worker.get("schema_version") != 1 or worker.get("repo_id") != repo_id or worker.get("enabled") is not True:
             raise ValueError("Automatic worker is not enabled for this repository")
-        observed = (schedule_probe or _schedule)("Tenon-" + repo_id)
-        if observed.get("status") == "UNKNOWN":
-            add("scheduler", "UNKNOWN", observed["reason"], next_commands=[["git", "-C", str(primary), "tenon", "worker", "status"]])
+        from worker_health import inspect_resident
+        resident = inspect_resident(primary, base, repo_id, installation,
+                                    schedule_probe=schedule_probe, process_probe=process_probe)
+        if resident is not None:
+            add("scheduler", resident["status"], resident["reason"], observation=resident,
+                next_commands=[["git", "-C", str(primary), "tenon", "worker", "status"]] if resident["status"] != "READY" else [])
         else:
-            registered_python = (installation or {}).get("python_executable")
-            binding = "installation.python_executable" if registered_python is not None else "current-native-interpreter-fallback"
-            if registered_python is not None and (not isinstance(registered_python, str) or not Path(registered_python).is_absolute()):
-                raise ValueError("Installed native interpreter path is invalid")
-            python = Path(registered_python or sys.executable).resolve()
-            expected_program = python.with_name("pythonw.exe")
-            expected_args = subprocess.list2cmdline([str(base / "bin/tenon.py"), "worker", "run", "--max-seconds", "900"])
-            actions = observed.get("actions", [])
-            mismatches = []
-            for field, expected in {"exists": True, "enabled": True, "description": "Tenon owned queue " + repo_id,
-                    "logon_type": "InteractiveToken", "run_level": "LeastPrivilege", "interval": "PT5M",
-                    "instances": "IgnoreNew", "timer_enabled": True, "logon_enabled": True,
-                    "hidden": True, "start_when_available": True}.items():
-                if observed.get(field) != expected:
-                    mismatches.append(field)
-            sid = observed.get("current_sid")
-            account = observed.get("current_name")
-            # Native exports normalize trigger UserId to this local account name.
-            # Compare only WindowsIdentity's own aliases; never resolve a domain.
-            aliases = {value.casefold() for value in (sid, account) if isinstance(value, str) and value}
-            if not sid or any(str(observed.get(field, "")).casefold() not in aliases for field in ("user_sid", "logon_user")):
-                mismatches.append("current-user ownership")
-            if len(actions) != 1:
-                mismatches.append("single entry action")
+            observed = (schedule_probe or _schedule)("Tenon-" + repo_id)
+            if observed.get("status") == "UNKNOWN":
+                add("scheduler", "UNKNOWN", observed["reason"], next_commands=[["git", "-C", str(primary), "tenon", "worker", "status"]])
             else:
-                if Path(actions[0].get("WorkingDirectory", "")).resolve() != primary:
-                    mismatches.append("action working directory")
-                if actions[0].get("Arguments") != expected_args:
-                    mismatches.append("action arguments")
-                executable = Path(actions[0].get("Execute", ""))
-                if not executable.is_absolute() or executable.resolve() != expected_program or not executable.is_file():
-                    mismatches.append("registered windowless action executable")
-            if mismatches:
-                raise ValueError("Owned scheduled task differs: " + ", ".join(mismatches))
-            add("scheduler", "READY", "Owned enabled recovery schedule dispatches the stable entry",
-                interpreter_binding={"source": binding, "python_executable": str(python), "expected_action_executable": str(expected_program)},
-                historical_execution={key: observed.get(key) for key in ("last_result", "last_run_utc", "next_run_utc", "state")},
-                execution_qualification="Historical result/state do not prove current worker liveness or successful cleanup")
+                registered_python = (installation or {}).get("python_executable")
+                binding = "installation.python_executable" if registered_python is not None else "current-native-interpreter-fallback"
+                if registered_python is not None and (not isinstance(registered_python, str) or not Path(registered_python).is_absolute()):
+                    raise ValueError("Installed native interpreter path is invalid")
+                python = Path(registered_python or sys.executable).resolve()
+                expected_program = python.with_name("pythonw.exe")
+                expected_args = subprocess.list2cmdline([str(base / "bin/tenon.py"), "worker", "run", "--max-seconds", "900"])
+                actions = observed.get("actions", [])
+                mismatches = []
+                for field, expected in {"exists": True, "enabled": True, "description": "Tenon owned queue " + repo_id,
+                        "logon_type": "InteractiveToken", "run_level": "LeastPrivilege", "interval": "PT5M",
+                        "instances": "IgnoreNew", "timer_enabled": True, "logon_enabled": True,
+                        "hidden": True, "start_when_available": True}.items():
+                    if observed.get(field) != expected:
+                        mismatches.append(field)
+                sid = observed.get("current_sid")
+                account = observed.get("current_name")
+                # Native exports normalize trigger UserId to this local account name.
+                # Compare only WindowsIdentity's own aliases; never resolve a domain.
+                aliases = {value.casefold() for value in (sid, account) if isinstance(value, str) and value}
+                if not sid or any(str(observed.get(field, "")).casefold() not in aliases for field in ("user_sid", "logon_user")):
+                    mismatches.append("current-user ownership")
+                if len(actions) != 1:
+                    mismatches.append("single entry action")
+                else:
+                    if Path(actions[0].get("WorkingDirectory", "")).resolve() != primary:
+                        mismatches.append("action working directory")
+                    if actions[0].get("Arguments") != expected_args:
+                        mismatches.append("action arguments")
+                    executable = Path(actions[0].get("Execute", ""))
+                    if not executable.is_absolute() or executable.resolve() != expected_program or not executable.is_file():
+                        mismatches.append("registered windowless action executable")
+                if mismatches:
+                    raise ValueError("Owned scheduled task differs: " + ", ".join(mismatches))
+                add("scheduler", "READY", "Owned enabled recovery schedule dispatches the stable entry",
+                    interpreter_binding={"source": binding, "python_executable": str(python), "expected_action_executable": str(expected_program)},
+                    historical_execution={key: observed.get(key) for key in ("last_result", "last_run_utc", "next_run_utc", "state")},
+                    execution_qualification="Historical result/state do not prove current worker liveness or successful cleanup")
     except INSPECTION_ERRORS as error:
         add("scheduler", "BLOCKED", str(error), next_commands=[["git", "-C", str(primary), "tenon", "worker", "status"]])
     try:
@@ -340,9 +348,12 @@ def full_doctor(repo: Path, *, schedule_probe=None, distribution_probe=None) -> 
             add("cleanup-backlog", "READY", "No durable blocker or contradictory local resources; unfinished deliveries remain unfinished",
                 pending=pending, pending_count=len(pending), remote_qualification="Remote absence remains unprobed",
                 next_commands=[["git", "-C", str(primary), "tenon", "metrics"]] if pending else [])
-        add("worker-observation", "READY" if metrics["worker"].get("lease_held") is True else "UNKNOWN",
-            "Observed OS lease and stored heartbeat only; stored PID and historical schedule result are not process-identity proof",
-            required=False, observation=metrics["worker"])
+        if resident is not None:
+            add("worker-observation", resident["status"], resident["reason"], required=False, observation=resident)
+        else:
+            add("worker-observation", "READY" if metrics["worker"].get("lease_held") is True else "UNKNOWN",
+                "Observed OS lease and stored heartbeat only; stored PID and historical schedule result are not process-identity proof",
+                required=False, observation=metrics["worker"])
     except INSPECTION_ERRORS as error:
         add("cleanup-backlog", "BLOCKED", "Cannot inspect local cleanup state: " + (str(error) if isinstance(error, ValueError) else type(error).__name__),
             next_commands=[["git", "-C", str(primary), "tenon", "metrics"]])

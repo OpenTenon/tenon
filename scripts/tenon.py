@@ -741,13 +741,13 @@ def main(argv: list[str] | None = None) -> int:
             from task_queue import reconcile
             value = reconcile(repo, apply=args.apply)
         elif args.command == "worker":
-            from task_worker import configuration, run, scheduler, set_enabled
+            from task_worker import run, scheduler, set_enabled, status as worker_status
             if args.worker_command in {"enable", "disable"}:
                 value = set_enabled(repo, args.worker_command == "enable", getattr(args, "acceptance_task", None))
             elif args.worker_command == "run":
                 value = run(repo, args.max_seconds)
             elif args.worker_command == "status":
-                value = {"configuration": configuration(TaskStore(repo)), "scheduler": scheduler(repo, "status") if os.name == "nt" else None}
+                value = worker_status(repo)
             else:
                 value = scheduler(repo, args.worker_command)
         elif args.task_command == "start":
