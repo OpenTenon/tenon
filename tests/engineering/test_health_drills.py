@@ -106,6 +106,47 @@ class HealthTests(RepositoryFixture):
         self.assertEqual(next(item for item in value["checks"] if item["id"] == "remote-availability")["status"], "UNKNOWN")
         self.assertEqual(files(self.root), before)
 
+    def test_resident_health_and_worker_status_share_read_only_observations(self):
+        from datetime import datetime, timedelta, timezone
+        from task_worker import status
+        self.ready()
+        base = self.store.root
+        now = datetime.now(timezone.utc)
+        script = base / "host/resident_worker.py"
+        script.parent.mkdir()
+        script.write_bytes(b"# isolated host resident; never executed")
+        write_json(base / "operations/resident-worker.json", {"schema_version": 1,
+            "repo_id": self.store.repo_id, "pid": 123, "state": "IDLE", "at": now.isoformat()})
+        pythonw = self.root / "build/pythonw.exe"
+        self.schedule["enabled"] = False
+        observed = {"status": "OBSERVED", "current_sid": "owner",
+            "startup": {"exists": True, "path": "owned.lnk", "executable": str(pythonw),
+                "argv": ["-B", str(script)], "working_directory": str(self.root),
+                "description": "Tenon owned resident queue " + self.store.repo_id},
+            "process": {"pid": 123, "owner_sid": "owner", "executable": str(pythonw),
+                "argv": [str(pythonw), "-B", str(script)], "started_at": (now - timedelta(minutes=1)).isoformat()}}
+        before = files(self.root)
+        doctor = self.inspect(process_probe=lambda *_: copy.deepcopy(observed))
+        worker = status(self.root, schedule_probe=lambda _: copy.deepcopy(self.schedule),
+                        process_probe=lambda *_: copy.deepcopy(observed))
+        self.assertEqual(doctor["status"], "READY", doctor)
+        self.assertEqual(worker["status"], "READY", worker)
+        self.assertEqual(worker["background"]["mode"], "resident")
+        self.assertFalse(worker["scheduler"]["enabled"])
+        self.assertEqual(next(row for row in doctor["checks"] if row["id"] == "worker-observation")["status"], "READY")
+        self.assertEqual(files(self.root), before)
+        self.schedule["enabled"] = True
+        self.assertEqual(self.inspect(process_probe=lambda *_: observed)["status"], "BLOCKED")
+        self.assertEqual(status(self.root, schedule_probe=lambda _: self.schedule,
+                                process_probe=lambda *_: observed)["status"], "BLOCKED")
+        self.assertEqual(files(self.root), before)
+
+        unknown = status(self.root, schedule_probe=lambda _: self.schedule,
+                         process_probe=lambda *_: {"status": "UNKNOWN", "reason": "Native inspection unavailable"})
+        self.assertEqual(unknown["status"], "BLOCKED")
+        self.assertEqual(unknown["background"]["status"], "UNKNOWN")
+        self.assertEqual(files(self.root), before)
+
     def test_tooling_directory_is_never_reported_as_primary(self):
         directory = self.ready()
         value = self.inspect(directory)

@@ -203,6 +203,22 @@ Start-ScheduledTask -TaskName $env:TENON_TASK_NAME
             "enabled": configuration(store)["enabled"], "details": completed.stdout.strip()}
 
 
+def status(repo: Path, *, schedule_probe=None, process_probe=None) -> dict:
+    from engineering_health import _json, _primary
+    from worker_health import inspect_resident
+    store = TaskStore(repo, initialize=False)
+    config = configuration(store)
+    primary, common = _primary(repo)
+    resident = inspect_resident(primary, common / "tenon", store.repo_id,
+        _json(store.root / "bin/installation.json"), schedule_probe=schedule_probe, process_probe=process_probe)
+    if resident is None:
+        return {"configuration": config, "scheduler": scheduler(repo, "status") if os.name == "nt" else None}
+    if config["enabled"] is not True:
+        resident.update(status="BLOCKED", reason="Automatic worker is disabled for this repository")
+    return {"configuration": config, "status": "READY" if resident["status"] == "READY" else "BLOCKED", "background": resident,
+            "scheduler": resident.get("scheduler")}
+
+
 def launch(repo: Path) -> dict:
     store = TaskStore(repo)
     if not configuration(store)["enabled"]:
