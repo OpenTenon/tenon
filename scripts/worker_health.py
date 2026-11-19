@@ -180,4 +180,3 @@ def inspect_resident(primary: Path, base: Path, repo_id: str, installation: dict
     except INSPECTION_ERRORS as error:
         value["reason"] = str(error)
     return value
-

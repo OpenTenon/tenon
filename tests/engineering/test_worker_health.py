@@ -161,4 +161,3 @@ class ResidentHealthTests(unittest.TestCase):
         self.assertEqual(_argv('"C:\\Python Tools\\pythonw.exe" -B "C:\\work tree\\resident.py"'),
                          ["C:\\Python Tools\\pythonw.exe", "-B", "C:\\work tree\\resident.py"])
         self.assertEqual(_argv('"entry" -B "script.py" extra')[1:], ["-B", "script.py", "extra"])
-
