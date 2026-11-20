@@ -11,10 +11,10 @@ module tenon_mini_gateway (
     output logic [11:0] site_gpio_oe
 );
 
-    assign project_enable_o = selected_i;
-    assign project_gpio_i   = fabric_gpio_i & {12{selected_i}};
-    assign site_gpio_o      = project_gpio_o & {12{selected_i}};
-    assign site_gpio_oe     = project_gpio_oe & {12{selected_i}};
+  assign project_enable_o = selected_i;
+  assign project_gpio_i   = fabric_gpio_i & {12{selected_i}};
+  assign site_gpio_o      = project_gpio_o & {12{selected_i}};
+  assign site_gpio_oe     = project_gpio_oe & {12{selected_i}};
 
 endmodule
 

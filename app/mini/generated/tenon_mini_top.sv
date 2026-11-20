@@ -2,220 +2,220 @@
 `default_nettype none
 
 module tenon_mini_top (
-    input  logic                      ctrl_clk_i,
-    input  logic                      ctrl_rst_n_i,
-    input  logic [10:0]                project_addr_i,
-    input  logic                      select_commit_i,
-    output logic                      select_ready_o,
-    output logic                      select_valid_o,
-    input  logic                      fabric_enable_i,
-    input  logic [1:0]                clk_i,
-    input  logic [1:0]                rst_n_i,
-    input  logic [11:0]               gpio_i,
-    output logic [11:0]               gpio_o,
-    output logic [11:0]               gpio_oe,
-    inout  wire                       VDD,
-    inout  wire                       VSS
+    input  logic        ctrl_clk_i,
+    input  logic        ctrl_rst_n_i,
+    input  logic [10:0] project_addr_i,
+    input  logic        select_commit_i,
+    output logic        select_ready_o,
+    output logic        select_valid_o,
+    input  logic        fabric_enable_i,
+    input  logic [ 1:0] clk_i,
+    input  logic [ 1:0] rst_n_i,
+    input  logic [11:0] gpio_i,
+    output logic [11:0] gpio_o,
+    output logic [11:0] gpio_oe,
+    inout  wire         VDD,
+    inout  wire         VSS
 );
 
-    localparam int CLUSTER_COUNT = 8;
-    localparam int TOTAL_SITES = 2048;
-    localparam logic [TOTAL_SITES-1:0] ANCHOR_VALID = 2048'b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111;
+  localparam int CLUSTER_COUNT = 8;
+  localparam int TOTAL_SITES = 2048;
+  localparam logic [TOTAL_SITES-1:0] ANCHOR_VALID = 2048'b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111;
 
-    logic [CLUSTER_COUNT*2-1:0] cluster_clock;
-    logic [3:0] branch_addr;
-    logic [3:0] site_addr;
-    logic [CLUSTER_COUNT-1:0] branch_clock_request;
-    logic [CLUSTER_COUNT-1:0] route_enable;
-    logic [CLUSTER_COUNT*2-1:0] branch_clock_active;
-    logic [CLUSTER_COUNT*12-1:0] cluster_gpio_o;
-    logic [CLUSTER_COUNT*12-1:0] cluster_gpio_oe;
+  logic [ CLUSTER_COUNT*2-1:0] cluster_clock;
+  logic [                 3:0] branch_addr;
+  logic [                 3:0] site_addr;
+  logic [   CLUSTER_COUNT-1:0] branch_clock_request;
+  logic [   CLUSTER_COUNT-1:0] route_enable;
+  logic [ CLUSTER_COUNT*2-1:0] branch_clock_active;
+  logic [CLUSTER_COUNT*12-1:0] cluster_gpio_o;
+  logic [CLUSTER_COUNT*12-1:0] cluster_gpio_oe;
 `ifdef TENON_MINI_VERIFY
-    logic [TOTAL_SITES-1:0] site_enable;
+  logic [TOTAL_SITES-1:0] site_enable;
 `endif
 
-    tenon_mini_root_fabric #(
-        .CLUSTER_COUNT(CLUSTER_COUNT),
-        .ANCHOR_VALID(ANCHOR_VALID)
-    ) root_fabric_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .project_addr_i,
-        .select_commit_i,
-        .select_ready_o,
-        .select_valid_o,
-        .fabric_enable_i,
-        .clk_i,
-        .cluster_clock_o(cluster_clock),
-        .branch_addr_o(branch_addr),
-        .site_addr_o(site_addr),
-        .branch_clock_request_o(branch_clock_request),
-        .route_enable_o(route_enable),
-        .branch_clock_active_i(branch_clock_active),
-        .cluster_gpio_o_i(cluster_gpio_o),
-        .cluster_gpio_oe_i(cluster_gpio_oe),
-        .gpio_o,
-        .gpio_oe
-    );
+  tenon_mini_root_fabric #(
+      .CLUSTER_COUNT(CLUSTER_COUNT),
+      .ANCHOR_VALID (ANCHOR_VALID)
+  ) root_fabric_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .project_addr_i,
+      .select_commit_i,
+      .select_ready_o,
+      .select_valid_o,
+      .fabric_enable_i,
+      .clk_i,
+      .cluster_clock_o       (cluster_clock),
+      .branch_addr_o         (branch_addr),
+      .site_addr_o           (site_addr),
+      .branch_clock_request_o(branch_clock_request),
+      .route_enable_o        (route_enable),
+      .branch_clock_active_i (branch_clock_active),
+      .cluster_gpio_o_i      (cluster_gpio_o),
+      .cluster_gpio_oe_i     (cluster_gpio_oe),
+      .gpio_o,
+      .gpio_oe
+  );
 
-    tenon_mini_cluster_tile cluster_0_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .cluster_clock_i(cluster_clock[0 +: 2]),
-        .rst_n_i,
-        .branch_addr_i(branch_addr),
-        .site_addr_i(site_addr),
-        .branch_clock_request_i(branch_clock_request[0]),
-        .route_enable_i(route_enable[0]),
-        .gpio_i,
-        .branch_clock_active_o(branch_clock_active[0 +: 2]),
-        .gpio_o(cluster_gpio_o[0 +: 12]),
-        .gpio_oe(cluster_gpio_oe[0 +: 12]),
-        .VDD,
-        .VSS
-    );
+  tenon_mini_cluster_tile cluster_0_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .cluster_clock_i       (cluster_clock[0+:2]),
+      .rst_n_i,
+      .branch_addr_i         (branch_addr),
+      .site_addr_i           (site_addr),
+      .branch_clock_request_i(branch_clock_request[0]),
+      .route_enable_i        (route_enable[0]),
+      .gpio_i,
+      .branch_clock_active_o (branch_clock_active[0+:2]),
+      .gpio_o                (cluster_gpio_o[0+:12]),
+      .gpio_oe               (cluster_gpio_oe[0+:12]),
+      .VDD,
+      .VSS
+  );
 `ifdef TENON_MINI_VERIFY
-    assign site_enable[0 +: 256] = cluster_0_I.site_enable;
+  assign site_enable[0+:256] = cluster_0_I.site_enable;
 `endif
 
-    tenon_mini_cluster_tile cluster_1_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .cluster_clock_i(cluster_clock[2 +: 2]),
-        .rst_n_i,
-        .branch_addr_i(branch_addr),
-        .site_addr_i(site_addr),
-        .branch_clock_request_i(branch_clock_request[1]),
-        .route_enable_i(route_enable[1]),
-        .gpio_i,
-        .branch_clock_active_o(branch_clock_active[2 +: 2]),
-        .gpio_o(cluster_gpio_o[12 +: 12]),
-        .gpio_oe(cluster_gpio_oe[12 +: 12]),
-        .VDD,
-        .VSS
-    );
+  tenon_mini_cluster_tile cluster_1_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .cluster_clock_i       (cluster_clock[2+:2]),
+      .rst_n_i,
+      .branch_addr_i         (branch_addr),
+      .site_addr_i           (site_addr),
+      .branch_clock_request_i(branch_clock_request[1]),
+      .route_enable_i        (route_enable[1]),
+      .gpio_i,
+      .branch_clock_active_o (branch_clock_active[2+:2]),
+      .gpio_o                (cluster_gpio_o[12+:12]),
+      .gpio_oe               (cluster_gpio_oe[12+:12]),
+      .VDD,
+      .VSS
+  );
 `ifdef TENON_MINI_VERIFY
-    assign site_enable[256 +: 256] = cluster_1_I.site_enable;
+  assign site_enable[256+:256] = cluster_1_I.site_enable;
 `endif
 
-    tenon_mini_cluster_tile cluster_2_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .cluster_clock_i(cluster_clock[4 +: 2]),
-        .rst_n_i,
-        .branch_addr_i(branch_addr),
-        .site_addr_i(site_addr),
-        .branch_clock_request_i(branch_clock_request[2]),
-        .route_enable_i(route_enable[2]),
-        .gpio_i,
-        .branch_clock_active_o(branch_clock_active[4 +: 2]),
-        .gpio_o(cluster_gpio_o[24 +: 12]),
-        .gpio_oe(cluster_gpio_oe[24 +: 12]),
-        .VDD,
-        .VSS
-    );
+  tenon_mini_cluster_tile cluster_2_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .cluster_clock_i       (cluster_clock[4+:2]),
+      .rst_n_i,
+      .branch_addr_i         (branch_addr),
+      .site_addr_i           (site_addr),
+      .branch_clock_request_i(branch_clock_request[2]),
+      .route_enable_i        (route_enable[2]),
+      .gpio_i,
+      .branch_clock_active_o (branch_clock_active[4+:2]),
+      .gpio_o                (cluster_gpio_o[24+:12]),
+      .gpio_oe               (cluster_gpio_oe[24+:12]),
+      .VDD,
+      .VSS
+  );
 `ifdef TENON_MINI_VERIFY
-    assign site_enable[512 +: 256] = cluster_2_I.site_enable;
+  assign site_enable[512+:256] = cluster_2_I.site_enable;
 `endif
 
-    tenon_mini_cluster_tile cluster_3_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .cluster_clock_i(cluster_clock[6 +: 2]),
-        .rst_n_i,
-        .branch_addr_i(branch_addr),
-        .site_addr_i(site_addr),
-        .branch_clock_request_i(branch_clock_request[3]),
-        .route_enable_i(route_enable[3]),
-        .gpio_i,
-        .branch_clock_active_o(branch_clock_active[6 +: 2]),
-        .gpio_o(cluster_gpio_o[36 +: 12]),
-        .gpio_oe(cluster_gpio_oe[36 +: 12]),
-        .VDD,
-        .VSS
-    );
+  tenon_mini_cluster_tile cluster_3_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .cluster_clock_i       (cluster_clock[6+:2]),
+      .rst_n_i,
+      .branch_addr_i         (branch_addr),
+      .site_addr_i           (site_addr),
+      .branch_clock_request_i(branch_clock_request[3]),
+      .route_enable_i        (route_enable[3]),
+      .gpio_i,
+      .branch_clock_active_o (branch_clock_active[6+:2]),
+      .gpio_o                (cluster_gpio_o[36+:12]),
+      .gpio_oe               (cluster_gpio_oe[36+:12]),
+      .VDD,
+      .VSS
+  );
 `ifdef TENON_MINI_VERIFY
-    assign site_enable[768 +: 256] = cluster_3_I.site_enable;
+  assign site_enable[768+:256] = cluster_3_I.site_enable;
 `endif
 
-    tenon_mini_cluster_tile cluster_4_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .cluster_clock_i(cluster_clock[8 +: 2]),
-        .rst_n_i,
-        .branch_addr_i(branch_addr),
-        .site_addr_i(site_addr),
-        .branch_clock_request_i(branch_clock_request[4]),
-        .route_enable_i(route_enable[4]),
-        .gpio_i,
-        .branch_clock_active_o(branch_clock_active[8 +: 2]),
-        .gpio_o(cluster_gpio_o[48 +: 12]),
-        .gpio_oe(cluster_gpio_oe[48 +: 12]),
-        .VDD,
-        .VSS
-    );
+  tenon_mini_cluster_tile cluster_4_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .cluster_clock_i       (cluster_clock[8+:2]),
+      .rst_n_i,
+      .branch_addr_i         (branch_addr),
+      .site_addr_i           (site_addr),
+      .branch_clock_request_i(branch_clock_request[4]),
+      .route_enable_i        (route_enable[4]),
+      .gpio_i,
+      .branch_clock_active_o (branch_clock_active[8+:2]),
+      .gpio_o                (cluster_gpio_o[48+:12]),
+      .gpio_oe               (cluster_gpio_oe[48+:12]),
+      .VDD,
+      .VSS
+  );
 `ifdef TENON_MINI_VERIFY
-    assign site_enable[1024 +: 256] = cluster_4_I.site_enable;
+  assign site_enable[1024+:256] = cluster_4_I.site_enable;
 `endif
 
-    tenon_mini_cluster_tile cluster_5_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .cluster_clock_i(cluster_clock[10 +: 2]),
-        .rst_n_i,
-        .branch_addr_i(branch_addr),
-        .site_addr_i(site_addr),
-        .branch_clock_request_i(branch_clock_request[5]),
-        .route_enable_i(route_enable[5]),
-        .gpio_i,
-        .branch_clock_active_o(branch_clock_active[10 +: 2]),
-        .gpio_o(cluster_gpio_o[60 +: 12]),
-        .gpio_oe(cluster_gpio_oe[60 +: 12]),
-        .VDD,
-        .VSS
-    );
+  tenon_mini_cluster_tile cluster_5_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .cluster_clock_i       (cluster_clock[10+:2]),
+      .rst_n_i,
+      .branch_addr_i         (branch_addr),
+      .site_addr_i           (site_addr),
+      .branch_clock_request_i(branch_clock_request[5]),
+      .route_enable_i        (route_enable[5]),
+      .gpio_i,
+      .branch_clock_active_o (branch_clock_active[10+:2]),
+      .gpio_o                (cluster_gpio_o[60+:12]),
+      .gpio_oe               (cluster_gpio_oe[60+:12]),
+      .VDD,
+      .VSS
+  );
 `ifdef TENON_MINI_VERIFY
-    assign site_enable[1280 +: 256] = cluster_5_I.site_enable;
+  assign site_enable[1280+:256] = cluster_5_I.site_enable;
 `endif
 
-    tenon_mini_cluster_tile cluster_6_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .cluster_clock_i(cluster_clock[12 +: 2]),
-        .rst_n_i,
-        .branch_addr_i(branch_addr),
-        .site_addr_i(site_addr),
-        .branch_clock_request_i(branch_clock_request[6]),
-        .route_enable_i(route_enable[6]),
-        .gpio_i,
-        .branch_clock_active_o(branch_clock_active[12 +: 2]),
-        .gpio_o(cluster_gpio_o[72 +: 12]),
-        .gpio_oe(cluster_gpio_oe[72 +: 12]),
-        .VDD,
-        .VSS
-    );
+  tenon_mini_cluster_tile cluster_6_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .cluster_clock_i       (cluster_clock[12+:2]),
+      .rst_n_i,
+      .branch_addr_i         (branch_addr),
+      .site_addr_i           (site_addr),
+      .branch_clock_request_i(branch_clock_request[6]),
+      .route_enable_i        (route_enable[6]),
+      .gpio_i,
+      .branch_clock_active_o (branch_clock_active[12+:2]),
+      .gpio_o                (cluster_gpio_o[72+:12]),
+      .gpio_oe               (cluster_gpio_oe[72+:12]),
+      .VDD,
+      .VSS
+  );
 `ifdef TENON_MINI_VERIFY
-    assign site_enable[1536 +: 256] = cluster_6_I.site_enable;
+  assign site_enable[1536+:256] = cluster_6_I.site_enable;
 `endif
 
-    tenon_mini_cluster_tile cluster_7_I (
-        .ctrl_clk_i,
-        .ctrl_rst_n_i,
-        .cluster_clock_i(cluster_clock[14 +: 2]),
-        .rst_n_i,
-        .branch_addr_i(branch_addr),
-        .site_addr_i(site_addr),
-        .branch_clock_request_i(branch_clock_request[7]),
-        .route_enable_i(route_enable[7]),
-        .gpio_i,
-        .branch_clock_active_o(branch_clock_active[14 +: 2]),
-        .gpio_o(cluster_gpio_o[84 +: 12]),
-        .gpio_oe(cluster_gpio_oe[84 +: 12]),
-        .VDD,
-        .VSS
-    );
+  tenon_mini_cluster_tile cluster_7_I (
+      .ctrl_clk_i,
+      .ctrl_rst_n_i,
+      .cluster_clock_i       (cluster_clock[14+:2]),
+      .rst_n_i,
+      .branch_addr_i         (branch_addr),
+      .site_addr_i           (site_addr),
+      .branch_clock_request_i(branch_clock_request[7]),
+      .route_enable_i        (route_enable[7]),
+      .gpio_i,
+      .branch_clock_active_o (branch_clock_active[14+:2]),
+      .gpio_o                (cluster_gpio_o[84+:12]),
+      .gpio_oe               (cluster_gpio_oe[84+:12]),
+      .VDD,
+      .VSS
+  );
 `ifdef TENON_MINI_VERIFY
-    assign site_enable[1792 +: 256] = cluster_7_I.site_enable;
+  assign site_enable[1792+:256] = cluster_7_I.site_enable;
 `endif
 
 endmodule
