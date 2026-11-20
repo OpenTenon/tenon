@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "version": 3,
+    "flow": "Classic"
+  },
+  "DESIGN_NAME": "tenon_mini_reference_project",
+  "VERILOG_FILES": [
+    "dir::tenon_mini_reference_project.sv"
+  ],
+  "PAD_LIBS": null,
+  "PAD_VERILOG_MODELS": null,
+  "PAD_GDS": [],
+  "PAD_LEFS": [],
+  "PAD_SPICE_MODELS": [],
+  "PAD_CDLS": [],
+  "VDD_NETS": [
+    "VDD"
+  ],
+  "GND_NETS": [
+    "VSS"
+  ],
+  "FP_SIZING": "absolute",
+  "DIE_AREA": [
+    0,
+    0,
+    25,
+    40
+  ],
+  "CORE_AREA": [
+    1,
+    1.4,
+    24,
+    39.2
+  ],
+  "IO_PIN_ORDER_CFG": "dir::pin_order.cfg",
+  "IO_PIN_H_LAYER": "MET3",
+  "IO_PIN_V_LAYER": "MET2",
+  "IO_PIN_H_LENGTH": 0.4,
+  "IO_PIN_V_LENGTH": 0.4,
+  "IO_PIN_H_THICKNESS_MULT": 2,
+  "IO_PIN_V_THICKNESS_MULT": 2,
+  "ERRORS_ON_UNMATCHED_IO": "both",
+  "PNR_SDC_FILE": "dir::constraints.sdc",
+  "SIGNOFF_SDC_FILE": "dir::constraints.sdc",
+  "CLOCK_PORT": [
+    "clk_i[0]",
+    "clk_i[1]"
+  ],
+  "CLOCK_PERIOD": 20,
+  "PDN_CFG": "dir::pdn.tcl",
+  "PDN_ENABLE_GLOBAL_CONNECTIONS": true,
+  "PDN_ENABLE_PINS": true,
+  "PDN_ENABLE_RAILS": true,
+  "PDN_CORE_RING": false,
+  "PDN_CORE_RING_CONNECT_TO_PADS": false,
+  "RUN_CTS": true,
+  "RUN_POST_GPL_DESIGN_REPAIR": true,
+  "RUN_POST_CTS_RESIZER_TIMING": true,
+  "RUN_POST_GRT_RESIZER_TIMING": true,
+  "GRT_ALLOW_CONGESTION": false,
+  "DRT_THREADS": 16,
+  "DRT_OPT_ITERS": 8,
+  "RUN_MAGIC_STREAMOUT": false,
+  "ERROR_ON_PDN_VIOLATIONS": true,
+  "ERROR_ON_TR_DRC": true,
+  "ERROR_ON_DISCONNECTED_PINS": true
+}

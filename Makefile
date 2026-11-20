@@ -49,11 +49,24 @@ CI_ICS55_IO_MODEL  := tb/ci_ics55_io_stub.sv
 CI_GF180_IO_MODEL  := tb/ci_gf180mcu_ocd_io_stub.sv
 BUILD_DIR          := build
 
-IHP_FLOW_DIR    := flow/ihp130
-GF180_FLOW_DIR  := flow/gf180
-ICS55_FLOW_DIR  := flow/ics55
-SMOKE_DIR       := smoke
-SKY130_FLOW_DIR := flow/sky130
+IHP_FLOW_DIR     := flow/ihp130
+GF180_FLOW_DIR   := flow/gf180
+ICS55_FLOW_DIR   := flow/ics55
+SMOKE_DIR        := smoke
+SKY130_FLOW_DIR  := flow/sky130
+MINI_DIR         := app/mini
+MINI_RTL         := $(MINI_DIR)/rtl/tenon_mini_clock_gate.sv \
+	$(MINI_DIR)/rtl/tenon_mini_clock_channel.sv \
+	$(MINI_DIR)/rtl/tenon_mini_root_controller.sv \
+	$(MINI_DIR)/rtl/tenon_mini_gateway.sv \
+	$(MINI_DIR)/rtl/tenon_mini_branch.sv \
+	$(MINI_DIR)/rtl/tenon_mini_cluster.sv \
+	$(MINI_DIR)/rtl/tenon_mini_fabric.sv \
+	$(MINI_DIR)/rtl/tenon_mini_root_fabric.sv
+MINI_PROJECT_RTL := $(MINI_DIR)/projects/reference/tenon_mini_reference_project.sv
+MINI_CLUSTER_RTL := $(MINI_DIR)/generated/tenon_mini_clusters.sv
+MINI_TOP_RTL     := $(MINI_DIR)/generated/tenon_mini_top.sv
+MINI_TB          := $(MINI_DIR)/tb/tenon_mini_tb.sv
 .DEFAULT_GOAL := help
 
 TENON_ARGS ?= doctor
@@ -77,7 +90,7 @@ ifneq ($(filter 1 true TRUE yes YES,$(SKIP_NETGEN_LVS)),)
 ICS55_NETGEN_LVS_SKIP := --skip Netgen.LVS
 endif
 
-.PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-compile-ics55 sim-ihp sim-sky130 sim-gf180 sim-ics55 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 check-pdk-ics55 lint lint-ihp lint-sky130 lint-gf180 lint-ics55 lint-ics55-no-pll lint-ics55-pll smoke-manifest-check lint-smoke smoke-sim smoke-run smoke-report lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128
+.PHONY: help generate check-generated check format format-check mk-format mk-format-check rtl-format rtl-format-check sim sim-compile sim-compile-ihp sim-compile-sky130 sim-compile-gf180 sim-compile-ics55 sim-ihp sim-sky130 sim-gf180 sim-ics55 check-pdk check-pdk-ihp check-pdk-sky130 check-pdk-gf180 check-pdk-ics55 lint lint-ihp lint-sky130 lint-gf180 lint-ics55 lint-ics55-no-pll lint-ics55-pll smoke-manifest-check lint-smoke smoke-sim smoke-run smoke-report lint-qfn32 lint-qfn64 lint-qfn88 lint-qfn128 test harden-all harden-qfn32 harden-qfn64 harden-qfn88 harden-qfn128 harden-gf180-all harden-gf180-qfn32 harden-gf180-qfn64 harden-gf180-qfn88 harden-gf180-qfn128 mini-generate mini-check-generated mini-spec-check mini-lint mini-sim mini-sim-full mini-check harden-mini-ics55-reference harden-mini-ics55-cluster harden-mini-ics55-top harden-mini-ics55-all
 .PHONY: harden-sky130-all harden-sky130-qfn32 harden-sky130-qfn64 harden-sky130-qfn88 harden-sky130-qfn128 harden-ics55-no-pll-all harden-ics55-pll-all harden-ics55-qfn32-no-pll harden-ics55-qfn64-no-pll harden-ics55-qfn88-no-pll harden-ics55-qfn128-no-pll harden-ics55-qfn32-pll harden-ics55-qfn64-pll harden-ics55-qfn88-pll harden-ics55-qfn128-pll harden-ics55-qfn32-no-pll-unsigned-io-pg harden-ics55-qfn64-no-pll-unsigned-io-pg harden-ics55-qfn88-no-pll-unsigned-io-pg harden-ics55-qfn128-no-pll-unsigned-io-pg harden-ics55-no-pll-unsigned-io-pg-all
 
 help:
@@ -117,6 +130,13 @@ help:
 	@echo "  lint-smoke            Compile all standalone ICS55 smoke RTL examples"
 	@echo "  smoke-run             Run all non-signoff ICS55 smoke LibreLane flows"
 	@echo "  smoke-report          Regenerate smoke/REPORTS.md from final metrics"
+	@echo "  mini-check            Validate and compile the 2048-site Tier2 Mini template"
+	@echo "  mini-sim              Run the fast dual-clock Mini selection simulation"
+	@echo "  mini-sim-full         Traverse all 2048 Mini addresses"
+	@echo "  harden-mini-ics55-reference  Harden the 25x40 um Mini reference project"
+	@echo "  harden-mini-ics55-cluster    Harden one 256-site Mini cluster"
+	@echo "  harden-mini-ics55-top        Harden the eight-cluster Mini Tier2 macro"
+	@echo "  harden-mini-ics55-all        Run all three Mini hierarchy levels"
 	@echo "  check-pdk-ics55       Verify the external ICS55 manual PDK and OpenROAD views"
 	@echo "  harden-ics55-qfn32-no-pll / harden-ics55-qfn32-pll"
 	@echo "  harden-ics55-qfn{32,64,88,128}-no-pll-unsigned-io-pg  Explicit non-signoff SP55 IO-PG continuation"
@@ -125,13 +145,29 @@ help:
 	@echo "  SKIP_NETGEN_LVS=1     Blocked: LVS skipping is outside the AGENTS.md exceptions"
 	@echo "  UNSIGNED_IO_PG=1      Required by explicit ICS55 no-PLL IO-PG continuation targets"
 
-generate:
+generate: mini-generate
 	$(PYTHON) tools/generate_tier0.py
 
-check-generated:
+check-generated: mini-check-generated
 	$(PYTHON) tools/generate_tier0.py --check
 
-check: check-generated smoke-manifest-check lint-smoke smoke-sim
+check: check-generated smoke-manifest-check lint-smoke smoke-sim mini-check
+
+mini-generate:
+	$(PYTHON) $(MINI_DIR)/tools/generate.py
+	$(PYTHON) $(MINI_DIR)/tools/generate_physical.py
+
+mini-check-generated:
+	$(PYTHON) $(MINI_DIR)/tools/generate.py --check
+	$(PYTHON) $(MINI_DIR)/tools/generate_physical.py --check
+
+mini-spec-check:
+	$(PYTHON) $(MINI_DIR)/tools/check_specs.py
+
+mini-lint: mini-check-generated
+	$(IVERILOG) -g2012 -tnull -s tenon_mini_top $(MINI_RTL) $(MINI_PROJECT_RTL) $(MINI_CLUSTER_RTL) $(MINI_TOP_RTL)
+
+mini-check: mini-spec-check mini-lint
 
 smoke-manifest-check:
 	$(PYTHON) $(SMOKE_DIR)/design_manifest.py
@@ -179,7 +215,7 @@ sim-compile-ics55:
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_tb -DTENON_TIER0_DUT=tenon_tier0_padframe_ics55_no_pll $(CI_ICS55_IO_MODEL) $(ICS55_RTL) tb/tenon_tier0_tb.sv
 	$(IVERILOG) -g2012 -tnull -s tenon_tier0_ics55_pll_tb $(CI_ICS55_IO_MODEL) $(ICS55_RTL) tb/tenon_tier0_ics55_pll_tb.sv
 
-sim: sim-ihp sim-sky130 sim-gf180 sim-ics55
+sim: sim-ihp sim-sky130 sim-gf180 sim-ics55 mini-sim
 
 sim-ihp:
 	@mkdir -p $(BUILD_DIR)/sim
@@ -202,6 +238,39 @@ sim-ics55:
 	$(VVP) $(BUILD_DIR)/sim/ics55-no-pll.vvp
 	$(IVERILOG) -g2012 -s tenon_tier0_ics55_pll_tb -o $(BUILD_DIR)/sim/ics55-pll.vvp $(CI_ICS55_IO_MODEL) $(ICS55_RTL) tb/tenon_tier0_ics55_pll_tb.sv
 	$(VVP) $(BUILD_DIR)/sim/ics55-pll.vvp
+
+mini-sim: mini-check-generated
+	@mkdir -p $(BUILD_DIR)/sim
+	$(IVERILOG) -g2012 -DTENON_MINI_VERIFY -s tenon_mini_tb -o $(BUILD_DIR)/sim/mini.vvp $(MINI_RTL) $(MINI_PROJECT_RTL) $(MINI_CLUSTER_RTL) $(MINI_TOP_RTL) $(MINI_TB)
+	$(VVP) $(BUILD_DIR)/sim/mini.vvp
+
+mini-sim-full: mini-check-generated
+	@mkdir -p $(BUILD_DIR)/sim
+	$(IVERILOG) -g2012 -DTENON_MINI_VERIFY -s tenon_mini_tb -o $(BUILD_DIR)/sim/mini.vvp $(MINI_RTL) $(MINI_PROJECT_RTL) $(MINI_CLUSTER_RTL) $(MINI_TOP_RTL) $(MINI_TB)
+	$(VVP) $(BUILD_DIR)/sim/mini.vvp +FULL
+
+harden-mini-ics55-reference: mini-check lint-ics55
+	$(PYTHON) scripts/physical.py --pdk ics55 --config $(MINI_DIR)/projects/reference/config.json --tag ics55-reference --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) $(ICS55_DRC_SKIPS) --run-tag ics55-reference $(MINI_DIR)/projects/reference/config.json
+	@mkdir -p $(MINI_DIR)/projects/reference/runs/ics55-reference/final/lef
+	RUN_DIR="$(CURDIR)/$(MINI_DIR)/projects/reference/runs/ics55-reference" DESIGN_NAME=tenon_mini_reference_project OUTPUT_LEF="$(CURDIR)/$(MINI_DIR)/projects/reference/runs/ics55-reference/final/lef/tenon_mini_reference_project.lef" $(OPENROAD) -no_init -exit $(MINI_DIR)/tools/export_macro.tcl
+	$(PYTHON) $(MINI_DIR)/tools/expose_power_layer.py --layer MET5 --orientation horizontal --minimum-pin-width 0.5 $(MINI_DIR)/projects/reference/runs/ics55-reference/final/lef/tenon_mini_reference_project.lef
+	$(PYTHON) $(MINI_DIR)/tools/package_macro.py $(MINI_DIR)/projects/reference/runs/ics55-reference tenon_mini_reference_project --liberty $(MINI_DIR)/projects/reference/tenon_mini_reference_project.lib
+
+harden-mini-ics55-cluster: harden-mini-ics55-reference mini-check-generated
+	$(PYTHON) scripts/physical.py --pdk ics55 --config $(MINI_DIR)/physical/cluster/config.json --tag ics55-cluster --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) $(ICS55_DRC_SKIPS) --run-tag ics55-cluster $(MINI_DIR)/physical/cluster/config.json
+	@mkdir -p $(MINI_DIR)/physical/cluster/runs/ics55-cluster/final/lef
+	RUN_DIR="$(CURDIR)/$(MINI_DIR)/physical/cluster/runs/ics55-cluster" DESIGN_NAME=tenon_mini_cluster_tile OUTPUT_LEF="$(CURDIR)/$(MINI_DIR)/physical/cluster/runs/ics55-cluster/final/lef/tenon_mini_cluster_tile.lef" $(OPENROAD) -no_init -exit $(MINI_DIR)/tools/export_macro.tcl
+	$(PYTHON) $(MINI_DIR)/tools/expose_power_layer.py --layer T4M2 --orientation vertical --minimum-pin-width 6 $(MINI_DIR)/physical/cluster/runs/ics55-cluster/final/lef/tenon_mini_cluster_tile.lef
+	$(PYTHON) $(MINI_DIR)/tools/package_macro.py $(MINI_DIR)/physical/cluster/runs/ics55-cluster tenon_mini_cluster_tile
+
+harden-mini-ics55-top: harden-mini-ics55-cluster mini-check-generated
+	$(PYTHON) scripts/physical.py --pdk ics55 --config $(MINI_DIR)/physical/top/config.json --tag ics55-top --timeout $(TENON_PHYSICAL_TIMEOUT) -- $(LIBRELANE) --manual-pdk --pdk $(ICS55_PDK) --pdk-root $(ICS55_PDK_ROOT) --scl $(ICS55_SCL) $(ICS55_DRC_SKIPS) --run-tag ics55-top $(MINI_DIR)/physical/top/config.json
+	@mkdir -p $(MINI_DIR)/physical/top/runs/ics55-top/final/lef
+	RUN_DIR="$(CURDIR)/$(MINI_DIR)/physical/top/runs/ics55-top" DESIGN_NAME=tenon_mini_top OUTPUT_LEF="$(CURDIR)/$(MINI_DIR)/physical/top/runs/ics55-top/final/lef/tenon_mini_top.lef" $(OPENROAD) -no_init -exit $(MINI_DIR)/tools/export_macro.tcl
+	$(PYTHON) $(MINI_DIR)/tools/expose_power_layer.py --layer RDL --orientation horizontal --minimum-pin-width 8 $(MINI_DIR)/physical/top/runs/ics55-top/final/lef/tenon_mini_top.lef
+	$(PYTHON) $(MINI_DIR)/tools/package_macro.py $(MINI_DIR)/physical/top/runs/ics55-top tenon_mini_top
+
+harden-mini-ics55-all: harden-mini-ics55-top
 
 check-pdk: check-pdk-ihp
 

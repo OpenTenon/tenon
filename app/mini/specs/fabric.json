@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "cluster_count": 8,
+  "branches_per_cluster": 16,
+  "sites_per_branch": 16,
+  "site": {
+    "width_um": 25.0,
+    "height_um": 40.0,
+    "pin_edge": "east",
+    "pin_layer": "MET3",
+    "pin_pitch_um": 0.8,
+    "pin_first_center_um": 4.0
+  },
+  "clocks": {
+    "control_period_ns": 20.0,
+    "user_periods_ns": [
+      20.0,
+      25.0
+    ]
+  },
+  "physical": {
+    "site_column_channel_um": 20.0,
+    "site_row_channel_um": 20.0,
+    "local_router_width_um": 120.0,
+    "local_router_width_max_um": 240.0,
+    "local_router_width_step_um": 20.0,
+    "cluster_channel_um": 40.0,
+    "cluster_channel_max_um": 100.0,
+    "cluster_channel_step_um": 10.0,
+    "outer_margin_um": 40.0
+  }
+}

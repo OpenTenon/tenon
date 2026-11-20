@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "version": 3,
+    "flow": "Classic"
+  },
+  "DESIGN_NAME": "tenon_mini_top",
+  "VERILOG_FILES": [
+    "dir::../../rtl/tenon_mini_clock_gate.sv",
+    "dir::../../rtl/tenon_mini_clock_channel.sv",
+    "dir::../../rtl/tenon_mini_root_controller.sv",
+    "dir::../../rtl/tenon_mini_root_fabric.sv",
+    "dir::../../generated/tenon_mini_top.sv"
+  ],
+  "EXTRA_VERILOG_MODELS": [],
+  "PAD_LIBS": null,
+  "PAD_VERILOG_MODELS": null,
+  "PAD_GDS": [],
+  "PAD_LEFS": [],
+  "PAD_SPICE_MODELS": [],
+  "PAD_CDLS": [],
+  "VDD_NETS": [
+    "VDD"
+  ],
+  "GND_NETS": [
+    "VSS"
+  ],
+  "FP_SIZING": "absolute",
+  "FP_MACRO_HORIZONTAL_HALO": 2,
+  "FP_MACRO_VERTICAL_HALO": 2,
+  "IO_PIN_ORDER_CFG": "dir::pin_order.cfg",
+  "IO_PIN_H_LAYER": "MET3",
+  "IO_PIN_V_LAYER": "MET2",
+  "IO_PIN_H_LENGTH": 0.4,
+  "IO_PIN_V_LENGTH": 0.4,
+  "IO_PIN_H_THICKNESS_MULT": 2,
+  "IO_PIN_V_THICKNESS_MULT": 2,
+  "ERRORS_ON_UNMATCHED_IO": "both",
+  "FP_TRACKS_INFO": "dir::../tracks.info",
+  "PNR_SDC_FILE": "dir::pnr_constraints.sdc",
+  "SIGNOFF_SDC_FILE": "dir::constraints.sdc",
+  "CLOCK_PERIOD": 20,
+  "PDN_CFG": "dir::pdn.tcl",
+  "PDN_ENABLE_GLOBAL_CONNECTIONS": true,
+  "PDN_ENABLE_PINS": true,
+  "PDN_ENABLE_RAILS": true,
+  "PDN_CORE_RING": false,
+  "PDN_CORE_RING_CONNECT_TO_PADS": false,
+  "RUN_CTS": true,
+  "CTS_APPLY_NDR": "none",
+  "RUN_POST_GPL_DESIGN_REPAIR": false,
+  "RUN_POST_CTS_RESIZER_TIMING": false,
+  "RUN_POST_GRT_RESIZER_TIMING": false,
+  "GRT_ADJUSTMENT": 0.25,
+  "GRT_ALLOW_CONGESTION": false,
+  "DRT_THREADS": 16,
+  "DRT_OPT_ITERS": 8,
+  "RUN_MAGIC_STREAMOUT": false,
+  "ERROR_ON_PDN_VIOLATIONS": true,
+  "ERROR_ON_TR_DRC": true,
+  "ERROR_ON_DISCONNECTED_PINS": true,
+  "CLOCK_PORT": "ctrl_clk_i",
+  "DIE_AREA": [
+    0,
+    0,
+    2755.0,
+    3115.0
+  ],
+  "CORE_AREA": [
+    10,
+    10,
+    2745.0,
+    3105.0
+  ],
+  "PL_TARGET_DENSITY_PCT": 35,
+  "MACROS": {
+    "tenon_mini_cluster_tile": {
+      "gds": [
+        "dir::../cluster/runs/ics55-cluster/final/gds/tenon_mini_cluster_tile.gds"
+      ],
+      "lef": [
+        "dir::../cluster/runs/ics55-cluster/final/lef/tenon_mini_cluster_tile.lef"
+      ],
+      "vh": [
+        "dir::../cluster_tile.blackbox.sv"
+      ],
+      "instances": {
+        "cluster_0_I": {
+          "location": [
+            40.0,
+            40.0
+          ],
+          "orientation": "N"
+        },
+        "cluster_1_I": {
+          "location": [
+            945.0,
+            40.0
+          ],
+          "orientation": "N"
+        },
+        "cluster_2_I": {
+          "location": [
+            1850.0,
+            40.0
+          ],
+          "orientation": "N"
+        },
+        "cluster_3_I": {
+          "location": [
+            40.0,
+            1065.0
+          ],
+          "orientation": "N"
+        },
+        "cluster_4_I": {
+          "location": [
+            1850.0,
+            1065.0
+          ],
+          "orientation": "N"
+        },
+        "cluster_5_I": {
+          "location": [
+            40.0,
+            2090.0
+          ],
+          "orientation": "N"
+        },
+        "cluster_6_I": {
+          "location": [
+            945.0,
+            2090.0
+          ],
+          "orientation": "N"
+        },
+        "cluster_7_I": {
+          "location": [
+            1850.0,
+            2090.0
+          ],
+          "orientation": "N"
+        }
+      }
+    }
+  }
+}

@@ -48,6 +48,23 @@ ICS55 no-PLL profiles use H7CR standard cells and commercial SP55 `PB4` function
 
 ICS55 no-PLL uses the smallest square die that closes each commercial SP55 pad row between 228 um PCORNER cells, while keeping a 2 um guard band between the outer VSS core ring and the fixed 228 um pad-row inner edge. QFN32 is 960 x 960 um with `CORE_AREA: [252,252,708,708]` (456 x 456 um nominal); QFN64 is 1101 x 1101 um with `[252,252,849,849]` (597 x 597 um); QFN88 is 1346 x 1346 um with `[252,252,1094,1094]` (842 x 842 um); and QFN128 is 1746 x 1746 um with `[252,252,1494,1494]` (1242 x 1242 um). Generated fixed placement uses the commercial 30 um PB4/PVSS1/PVDD2/PVSS2 and 35 um PVDD1 pitch, PADI30/PADO30 offsets, PCORNER cells and PFILL edge closure. A structural Tcl check requires the profile's full pad count, all four pad-row sides, corners and filler coverage. SP55 LEF does not contain complete package/RDL `VDD25/VSSD` geometry, so `harden-ics55-qfn{32,64,88,128}-no-pll-unsigned-io-pg` executes and saves the PowerGrid PSM report but lets those violations remain non-fatal only after explicit acknowledgement. It skips only the subsequent `OpenROAD.IRDropReport` PSM rerun, which has no non-fatal control. These targets are non-signoff.
 
+## Tier2 Mini
+
+`app/mini/` implements a digital-only 2048-unit Tier2 template. It uses eight
+256-site clusters, 16 branches per cluster and 16 sites per branch. Each
+25 x 40 um base unit exposes two clocks, two externally synchronized resets,
+one enable and 12 split bidirectional GPIOs from its 40 um east edge. An
+11-bit direct address plus a commit/ready handshake selects one project with
+break-before-make clock and output switching; no asynchronous selection chain
+or analog path is present.
+
+Projects may consume any contiguous rectangular footprint from 1x1 through
+16x16 units, must remain inside one cluster, and are addressed only at their
+anchor. The generator also supports increasing the number of 256-site clusters
+and widens the address accordingly. See `app/mini/README.md` for the project
+manifest, generated views, verification commands and ICS55 reference-hardening
+limits.
+
 ## Commands
 
 PDK-independent checks and simulations use CI-only PadCell models:
