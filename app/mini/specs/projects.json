@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "projects": [],
+  "reference_fill": {
+    "name_prefix": "reference_site",
+    "module": "tenon_mini_reference_project",
+    "rtl": "dir::../projects/reference/tenon_mini_reference_project.sv",
+    "views": {
+      "lef": "dir::../projects/reference/runs/ics55-reference/final/lef/tenon_mini_reference_project.lef",
+      "gds": "dir::../projects/reference/runs/ics55-reference/final/gds/tenon_mini_reference_project.gds",
+      "lib": "dir::../projects/reference/tenon_mini_reference_project.lib"
+    }
+  }
+}

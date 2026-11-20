@@ -1,0 +1,47 @@
+library (tenon_mini_reference_project) {
+  delay_model : table_lookup;
+  time_unit : "1ns";
+  voltage_unit : "1V";
+  current_unit : "1mA";
+  capacitive_load_unit (1, pf);
+  nom_voltage : 1.2;
+  nom_temperature : 25;
+  input_threshold_pct_rise : 50.0;
+  input_threshold_pct_fall : 50.0;
+  output_threshold_pct_rise : 50.0;
+  output_threshold_pct_fall : 50.0;
+  slew_lower_threshold_pct_rise : 20.0;
+  slew_upper_threshold_pct_rise : 80.0;
+  slew_lower_threshold_pct_fall : 20.0;
+  slew_upper_threshold_pct_fall : 80.0;
+
+  type (bus2) {
+    base_type : array;
+    data_type : bit;
+    bit_width : 2;
+    bit_from : 1;
+    bit_to : 0;
+    downto : true;
+  }
+  type (bus12) {
+    base_type : array;
+    data_type : bit;
+    bit_width : 12;
+    bit_from : 11;
+    bit_to : 0;
+    downto : true;
+  }
+
+  cell (tenon_mini_reference_project) {
+    area : 1000.0;
+    pg_pin (VDD) { pg_type : primary_power; voltage_name : "VDD"; }
+    pg_pin (VSS) { pg_type : primary_ground; voltage_name : "VSS"; }
+    bus (clk_i) { bus_type : bus2; direction : input; clock : true; }
+    bus (rst_n_i) { bus_type : bus2; direction : input; }
+    pin (enable_i) { direction : input; }
+    bus (gpio_i) { bus_type : bus12; direction : input; }
+    bus (gpio_o) { bus_type : bus12; direction : output; }
+    bus (gpio_oe) { bus_type : bus12; direction : output; }
+  }
+
+}

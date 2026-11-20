@@ -4,6 +4,7 @@ flow/sky130/runs/
 flow/gf180/runs/
 flow/ics55/runs/
 smoke/*/runs/
+app/mini/**/runs/
 *.vvp
 *.fst
 __pycache__/

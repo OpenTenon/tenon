@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 RTL_SUFFIXES = {".sv", ".svh", ".v", ".vh"}
-RTL_ROOTS = {"rtl", "smoke", "tb"}
+RTL_ROOTS = {"app", "rtl", "smoke", "tb"}
 
 
 def tracked_files(root: Path) -> list[Path]:

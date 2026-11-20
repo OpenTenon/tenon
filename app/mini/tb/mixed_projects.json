@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "name": "whole_cluster",
+      "module": "whole_cluster",
+      "columns": 16,
+      "rows": 16,
+      "location": {
+        "cluster": 0,
+        "branch": 0,
+        "site": 0
+      }
+    },
+    {
+      "name": "square_8x8",
+      "module": "square_8x8",
+      "columns": 8,
+      "rows": 8
+    },
+    {
+      "name": "rectangle_3x5",
+      "module": "rectangle_3x5",
+      "columns": 3,
+      "rows": 5
+    },
+    {
+      "name": "rectangle_2x1",
+      "module": "rectangle_2x1",
+      "columns": 2,
+      "rows": 1
+    },
+    {
+      "name": "single_site",
+      "module": "single_site",
+      "columns": 1,
+      "rows": 1
+    }
+  ]
+}
